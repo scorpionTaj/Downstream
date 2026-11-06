@@ -62,11 +62,11 @@ struct AddDownloadSheet: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(model.folder.path)
+                    .accessibilityLabel("Save to \(model.folder.abbreviatedPath)")
                 Button("Change…") { model.chooseFolder() }
                     .buttonStyle(.link)
+                    .accessibilityLabel("Change download folder")
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Save to \(model.folder.abbreviatedPath)")
 
             HStack {
                 if let blocker = model.downloadBlocker, !blocker.isEmpty {

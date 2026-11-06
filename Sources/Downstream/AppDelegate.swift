@@ -37,7 +37,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Downstream keeps running in the menu bar")
         ProcessInfo.processInfo.disableSuddenTermination()
         Self.applyDockIcon(hidden: AppSettings.hideDockIcon)
+        showNoticeOnFirstLaunch()
         Task { await tools.refresh() }
+    }
+
+    /// Shown once: Downstream is a neutral tool, and what gets downloaded with it is up to the user.
+    private func showNoticeOnFirstLaunch() {
+        let key = "acceptedNotice"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Before you start"
+        alert.informativeText = """
+            Downstream downloads video and audio from websites using yt-dlp. \
+            Only download content you own or have permission to download, and follow each site's terms.
+            """
+        alert.addButton(withTitle: "I understand")
+        alert.addButton(withTitle: "Quit")
+        if alert.runModal() == .alertFirstButtonReturn {
+            UserDefaults.standard.set(true, forKey: key)
+        } else {
+            NSApp.terminate(nil)
+        }
     }
 
     /// Downloads keep running with the window closed; the menu bar or the Dock brings it back.

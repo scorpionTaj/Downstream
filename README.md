@@ -6,6 +6,13 @@ It is a from-scratch implementation inspired by the feature set of Parabolic and
 - macOS 15 Sequoia or later
 - MIT license
 
+## Install
+
+1. Open `Downstream-<version>.dmg` and drag Downstream to Applications.
+2. The first time, right-click Downstream › Open (or allow it in System Settings › Privacy & Security).
+   Builds aren't notarized yet, so macOS asks once.
+3. Install the tools it uses (below). Downstream shows the exact command if any are missing.
+
 ## Requirements
 
 Downstream runs the Homebrew copies of its tools:
@@ -22,7 +29,7 @@ The app looks in `/opt/homebrew/bin` (Apple Silicon) and `/usr/local/bin` (Intel
 Only the Xcode Command Line Tools are needed (`xcode-select --install`). Xcode itself is not required.
 
 ```bash
-swift run DownstreamChecks      # run the offline checks
+swift run DownstreamChecks          # run the offline checks
 swift run DownstreamChecks --live   # also run real downloads (needs the network)
 ./scripts/bundle.sh             # build build/Downstream.app
 open build/Downstream.app
@@ -34,12 +41,22 @@ The Command Line Tools ship without the macro plugins for SwiftUI's `@State`, Sw
 - stores history and presets as JSON files instead of SwiftData
 - tests with `DownstreamChecks`, a plain executable that exits non-zero on failure
 
+## Releasing
+
+```bash
+scripts/release.sh                  # universal app + build/Downstream-<version>.dmg (+ .sha256)
+```
+
+The version comes from `Support/Info.plist`. Without a Developer ID the app is signed ad hoc.
+With one, set `SIGN_IDENTITY` (and `NOTARY_PROFILE` to notarize and staple); see the comments in `scripts/release.sh`.
+The icon is drawn by `scripts/make-icon.swift`, which writes `Support/AppIcon.icns`.
+
 ## Layout
 
 - `Sources/DownstreamCore`: the yt-dlp engine and tool discovery. No UI code.
 - `Sources/Downstream`: the SwiftUI app.
 - `Sources/DownstreamChecks`: the checks for `DownstreamCore`.
-- `scripts/bundle.sh`, `Support/Info.plist`: create the `.app` bundle.
+- `scripts/bundle.sh`, `scripts/release.sh`, `Support/`: build, sign and package the app.
 
 ## Legal
 
