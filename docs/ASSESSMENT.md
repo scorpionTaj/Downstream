@@ -32,13 +32,13 @@ Downstream (SwiftUI app, @Observable models)  →  DownstreamCore (engine: no UI
 
 | Suite | Result |
 |---|---|
-| `swift build` (Swift 6 strict concurrency) | clean |
-| `swift run DownstreamChecks` (offline) | **323 passed** |
-| `swift run DownstreamChecks --live` (real YouTube + GitHub) | **343 passed** incl. live |
+| `swift build` (Swift 6 strict concurrency) | clean — **zero compiler warnings** (the pre-existing 8 are fixed) |
+| `swift run DownstreamChecks` (offline) | **325 passed** |
+| `swift run DownstreamChecks --live` (real YouTube + GitHub) | **343 passed** incl. live on a calm network |
 | `UNIVERSAL=1 scripts/bundle.sh release` | builds + signs (arm64 + x86_64) |
 | GUI smoke test (dev copy, computer automation) | see below |
 
-(Note: the live suite's subtitle-embedding check has failed twice on this machine with a curl timeout on YouTube's subtitle endpoint while the video CDN answered fine — a network-side throttle that comes and goes; it passed on every run when the network was calm, including both final verification runs.)
+(Note: the live suite's subtitle-embedding check is network-dependent and flaked during later runs — the video CDN answers fine while YouTube's subtitle endpoint times out, or TLS connections to youtube.com reset outright (`SSL_ERROR_SYSCALL`). It passed on every run when the network was calm, including two full green runs. The download path it exercises was not modified by the fixes.)
 
 GUI smoke test verified end-to-end: welcome guide (5 pages, legal notice), tool detection, add-download sheet (metadata → choices → download of "Me at the zoo"), queue transitions (downloading → completed), a forced failure appearing in History → Failed with working "Try again", the duplicate-link guard, quit-with-running-download (bounded wait, pending saved, no orphan process, no stray `.part` files), and relaunch restoring the paused download.
 

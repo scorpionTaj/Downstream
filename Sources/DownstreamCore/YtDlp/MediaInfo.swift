@@ -44,7 +44,10 @@ public struct MediaInfo: Decodable, Sendable, Equatable {
         thumbnail = try c.decodeIfPresent(String.self, forKey: .thumbnail)
         let liveStatus = try? c.decodeIfPresent(String.self, forKey: .liveStatus)
         isLive = liveStatus == "is_live" || (try? c.decodeIfPresent(Bool.self, forKey: .isLive)) == true
-        formats = try c.decodeIfPresent([MediaFormat].self, forKey: .formats) ?? []
+        // A malformed element must not throw away every format (the quality picker would empty
+        // out) — or the whole document, since the array decode was a single `try`. The wrapper
+        // below absorbs the element failure, so the array decode itself always succeeds.
+        formats = (try? c.decodeIfPresent([LenientMediaFormat].self, forKey: .formats))?.compactMap(\.format) ?? []
         subtitleLanguages = try Self.languages(c, .subtitles)
         automaticCaptionLanguages = try Self.languages(c, .automaticCaptions)
 
@@ -57,6 +60,17 @@ public struct MediaInfo: Decodable, Sendable, Equatable {
     private static func languages(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) throws -> [String] {
         guard let tracks = try? c.decodeIfPresent([String: AnyDecodable].self, forKey: key) else { return [] }
         return tracks.keys.filter { $0 != "live_chat" }.sorted()
+    }
+}
+
+/// An element of `formats` that decodes to nil instead of throwing the whole array away.
+/// (A failed element decode can't advance the JSON unkeyed container, so the wrapper must
+/// succeed for every element — a bare `try?` loop would never reach the end.)
+private struct LenientMediaFormat: Decodable {
+    let format: MediaFormat?
+
+    init(from decoder: Decoder) throws {
+        format = try? MediaFormat(from: decoder)
     }
 }
 

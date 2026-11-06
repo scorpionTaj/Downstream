@@ -110,6 +110,7 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: "appearance") }
     }
 
+    @MainActor
     static func applyAppearance() {
         switch appearance {
         case .system: NSApp.appearance = nil

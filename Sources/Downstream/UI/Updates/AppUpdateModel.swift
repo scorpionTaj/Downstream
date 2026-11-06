@@ -104,10 +104,10 @@ final class AppUpdateModel {
                 let app = try installLocation.get()
                 guard let asset = release.diskImage else { throw UpdateError.noDiskImage }
                 state = .downloading(0, received: 0, total: asset.size > 0 ? asset.size : nil)
-                let dmg = try await ProgressDownloader.download(asset.downloadURL) { [weak self] received, total in
+                let dmg = try await ProgressDownloader.download(asset.downloadURL) { [self] received, total in
                     // Reports arrive from the network thread and can run out of order, even after the download
                     // has finished: only move forward, and only while still downloading.
-                    guard let self, case .downloading(_, let shown, _) = state, received >= shown else { return }
+                    guard case .downloading(_, let shown, _) = state, received >= shown else { return }
                     let total = total ?? (asset.size > 0 ? asset.size : nil)
                     state = .downloading(total.map { min(1, Double(received) / Double(max($0, 1))) }, received: received, total: total)
                 }

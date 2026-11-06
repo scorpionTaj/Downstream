@@ -44,6 +44,15 @@ func mediaInfoChecks() async {
         expect(!empty.isPlaylist, "no entries key, not a playlist")
     }
 
+    await suite("MediaInfo: one malformed format doesn't discard the rest") {
+        // A non-string format_id throws in MediaFormat's decoding; previously that discarded
+        // every format — or the whole document, since the array decode was one `try`.
+        let mixed = #"{"title": "x", "formats": [{"format_id": "good", "height": 720, "vcodec": "avc1", "acodec": "none"}, {"format_id": 123}, {"format_id": "also-good", "height": 360, "vcodec": "vp9", "acodec": "none"}]}"#
+        let info = try JSONDecoder().decode(MediaInfo.self, from: Data(mixed.utf8))
+        expect(info.formats.compactMap(\.id) == ["good", "also-good"], "the good formats survive: \(info.formats.compactMap(\.id))")
+        expect(info.formats.map { $0.height ?? 0 } == [720, 360], "in order, no gaps")
+    }
+
     await suite("MetadataFetcher error message") {
         expectEqual(MetadataFetcher.errorMessage(from: ["WARNING: x", "ERROR: [generic] 'foo' is not a valid URL", "trailing"]),
                     "[generic] 'foo' is not a valid URL")
