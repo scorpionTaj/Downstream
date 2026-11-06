@@ -52,8 +52,10 @@ public enum ArgumentBuilder {
     }
 
     /// Arguments for `MetadataFetcher`: one JSON document describing the URL, playlists flattened.
+    /// `--no-playlist` keeps a video URL that happens to carry a `&list=` parameter a single video
+    /// (a pure playlist URL is unaffected), matching what a non-playlist download would fetch.
     public static func metadataArguments(for url: URL, cookies: CookieSource?) -> [String] {
-        ["--ignore-config", "--no-warnings", "--dump-single-json", "--flat-playlist"]
+        ["--ignore-config", "--no-warnings", "--no-playlist", "--dump-single-json", "--flat-playlist"]
             + cookieArguments(cookies)
             + ["--", url.absoluteString]
     }

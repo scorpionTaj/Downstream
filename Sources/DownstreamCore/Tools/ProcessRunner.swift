@@ -47,6 +47,14 @@ public final class RunningProcess: Sendable {
         state.stop(reason: .cancelled, gracePeriod: gracePeriod)
     }
 
+    /// Stops the process like `cancel`, then blocks the calling thread until it's gone, or until
+    /// `deadline` passes (a process ignoring both signals is left running). Only for quitting:
+    /// after `applicationWillTerminate` returns the app dies, and a child left behind could keep
+    /// writing the file the next session would resume.
+    public func cancelAndWait(gracePeriod: Duration = .seconds(3), deadline: Duration) {
+        state.stopAndWait(reason: .cancelled, gracePeriod: gracePeriod, deadline: deadline)
+    }
+
     fileprivate final class State: Sendable {
         enum StopReason { case cancelled, timedOut }
 
@@ -70,6 +78,32 @@ public final class RunningProcess: Sendable {
                 process.withLock { process in
                     if let process, process.isRunning, process.processIdentifier == pid { process.terminate() }
                 }
+            }
+        }
+
+        /// The blocking twin of `stop(reason:gracePeriod:)`. The escalation can't be left to a
+        /// detached task here: when the app is quitting, that task would die with it.
+        func stopAndWait(reason: StopReason, gracePeriod: Duration, deadline: Duration) {
+            let pid: Int32? = process.withLock { process in
+                guard let process, process.isRunning else { return nil }
+                stopReason.withLock { if $0 == nil { $0 = reason } }
+                process.interrupt()
+                return process.processIdentifier
+            }
+            guard let pid else { return }
+            let clock = ContinuousClock()
+            let graceDeadline = clock.now + gracePeriod
+            let hardDeadline = clock.now + deadline
+            var sentTerm = false
+            while process.withLock({ $0?.isRunning == true && $0?.processIdentifier == pid }) {
+                if !sentTerm, clock.now >= graceDeadline {
+                    sentTerm = true
+                    process.withLock { process in
+                        if let process, process.isRunning, process.processIdentifier == pid { process.terminate() }
+                    }
+                }
+                if clock.now >= hardDeadline { return }
+                Thread.sleep(forTimeInterval: 0.05)
             }
         }
 

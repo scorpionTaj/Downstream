@@ -27,9 +27,25 @@ public struct Changelog: Sendable, Equatable {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("## ") {
                 let heading = line.dropFirst(3)
-                let parts = heading.split(separator: "-", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-                let version = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-                releases.append(Release(version: version, date: parts.count > 1 ? parts[1] : nil, sections: []))
+                // `## [1.2.0] - 2026-11-06`. The version is read from between the brackets when
+                // they're there — Keep-a-Changelog requires them, and the version can itself
+                // contain hyphens (`1.2.0-beta`), which would break a split on the first "-".
+                // Bracket-less headings fall back to that split.
+                let version: String
+                let remainder: Substring
+                let open = heading.firstIndex(of: "[")
+                let close = heading.firstIndex(of: "]")
+                if let open, let close, open < close {
+                    version = String(heading[heading.index(after: open)..<close]).trimmingCharacters(in: .whitespaces)
+                    remainder = heading[heading.index(after: close)...]
+                } else {
+                    let parts = heading.split(separator: "-", maxSplits: 1)
+                    version = (parts.first.map(String.init) ?? "")
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+                    remainder = parts.count > 1 ? parts[1] : ""
+                }
+                let date = remainder.trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+                releases.append(Release(version: version, date: date.isEmpty ? nil : date, sections: []))
             } else if line.hasPrefix("### "), !releases.isEmpty {
                 releases[releases.count - 1].sections.append((String(line.dropFirst(4)), []))
             } else if line.hasPrefix("- "), !releases.isEmpty {

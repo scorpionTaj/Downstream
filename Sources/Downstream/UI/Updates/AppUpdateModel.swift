@@ -114,10 +114,11 @@ final class AppUpdateModel {
                 let size = (try? FileManager.default.attributesOfItem(atPath: dmg.path)[.size] as? NSNumber)?.int64Value ?? asset.size
                 state = .downloading(1, received: size, total: size)
                 defer { try? FileManager.default.removeItem(at: dmg) }
-                if let checksum = release.checksum {
-                    let (data, _) = try await URLSession.shared.data(from: checksum.downloadURL)
-                    try AppUpdater.verify(dmg, checksumFileContents: String(decoding: data, as: UTF8.self))
-                }
+                // Fail closed: without a published checksum there's nothing to verify the bytes
+                // against, and codesign alone wouldn't notice a swapped DMG on a compromised feed.
+                guard let checksum = release.checksum else { throw UpdateError.noChecksum }
+                let (data, _) = try await URLSession.shared.data(from: checksum.downloadURL)
+                try AppUpdater.verify(dmg, checksumFileContents: String(decoding: data, as: UTF8.self))
                 state = .installing
                 // Test builds have their own app ID but install the real releases.
                 let releaseID = testFeed != nil ? Bundle.main.bundleIdentifier ?? ""

@@ -64,10 +64,11 @@ final class ToolSetupModel {
         updateYtDlp(brew: brew)
     }
 
-    /// Runs `brew upgrade yt-dlp`, showing its output, then checks the tools again.
+    /// Runs `brew upgrade yt-dlp`, showing its output, then checks the tools again. Waits for
+    /// running downloads first: Python loads its modules lazily, so replacing yt-dlp's files
+    /// under a running download can break it. (No new ones start while the queue is held.)
     func updateYtDlp(brew: URL) {
         guard !isUpdating else { return }
-        let before = report?[.ytDlp]?.version
         isUpdating = true
         updateOutput = []
         updateResult = nil
@@ -78,6 +79,12 @@ final class ToolSetupModel {
                 isUpdating = false
             }
             do {
+                while let running = downloads?.runningCount, running > 0 {
+                    updateResult = String(localized: "Waiting for the running downloads to finish…")
+                    try await Task.sleep(for: .seconds(1))
+                }
+                updateResult = nil
+                let before = report?[.ytDlp]?.version
                 let running = try ProcessRunner.start(brew, arguments: ["upgrade", "yt-dlp"])
                 for try await line in running.lines where !line.text.isEmpty {
                     updateOutput.append(line.text)

@@ -66,6 +66,12 @@ public final class DownloadManager {
     /// Jobs that would be lost if the app quit now: running, queued or paused.
     public var unfinishedCount: Int { jobs.filter { !$0.isFinished }.count }
 
+    /// The unfinished download for this exact link and folder, if there is one: adding it again
+    /// would run two yt-dlps over the same output files.
+    public func unfinishedJob(url: URL, outputDirectory: URL) -> DownloadJob? {
+        jobs.first { $0.url == url && $0.context.outputDirectory == outputDirectory && !$0.isFinished }
+    }
+
     /// Bytes per second across every running download.
     public var totalSpeed: Double {
         jobs.reduce(0) { total, job in
@@ -157,6 +163,19 @@ public final class DownloadManager {
     /// Pauses everything, keeping partial files. Used when the app quits.
     public func pauseAll() {
         for job in jobs { job.pause() }
+        onQueueChanged?()
+    }
+
+    /// `pauseAll()` that also waits for the child processes, bounded by `deadline` in total:
+    /// after `applicationWillTerminate` returns the app dies, and a yt-dlp left running could
+    /// keep writing the file the next session would resume.
+    public func pauseAllAndWait(deadline: Duration = .seconds(8)) {
+        let end = ContinuousClock.now + deadline
+        for job in jobs {
+            let remaining = end - ContinuousClock.now
+            guard remaining > .zero else { break }
+            job.pauseAndWait(deadline: remaining)
+        }
         onQueueChanged?()
     }
 

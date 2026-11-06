@@ -34,6 +34,13 @@ func updateChecks() async {
         expectEqual(sample.releases[0].sections.map(\.title), ["Added", "Fixed"])
         expectEqual(sample.releases[0].sections[0].items, ["One", "Two"])
         expectEqual(sample.releases[1].sections.first?.items, ["Loose"])
+
+        // A version may contain hyphens; only the date after `] - ` may be split off it.
+        let prerelease = Changelog(markdown: "## [1.2.0-beta] - 2026-02-03\n### Fixed\n- X\n## 0.9 - 2026-01-02\n- Y\n")
+        expectEqual(prerelease.releases.map(\.version), ["1.2.0-beta", "0.9"])
+        expectEqual(prerelease.releases[0].date, "2026-02-03")
+        expectEqual(prerelease.releases[1].date, "2026-01-02")
+        expectEqual(prerelease.releases[0].sections.first?.items, ["X"])
     }
 
     await suite("AppRelease decoding and update decision") {
@@ -51,6 +58,18 @@ func updateChecks() async {
         expect(AppUpdater.isUpdate(release, over: "1.1.9"), "newer")
         expect(!AppUpdater.isUpdate(release, over: "1.2.0"), "same version isn't an update")
         expect(!AppUpdater.isUpdate(release, over: "2.0"), "older isn't an update")
+
+        // A release without a .sha256 asset must leave checksum nil: installing then has nothing
+        // to verify against and is refused (the updater fails closed).
+        let noChecksumJSON = #"""
+        {"tag_name": "v1.2.0", "name": "Downstream 1.2.0", "body": "Notes", "html_url": "https://github.com/scorpionTaj/Downstream/releases/tag/v1.2.0",
+         "assets": [
+           {"name": "Downstream-1.2.0.dmg", "browser_download_url": "https://example.com/a.dmg", "size": 2000000}],
+         "extra": {"ignored": true}}
+        """#
+        let noChecksum = try JSONDecoder().decode(AppRelease.self, from: Data(noChecksumJSON.utf8))
+        expectEqual(noChecksum.checksum, nil)
+        expectEqual(noChecksum.diskImage?.name, "Downstream-1.2.0.dmg")
     }
 
     await suite("AppUpdater: checksum and install from a disk image") {

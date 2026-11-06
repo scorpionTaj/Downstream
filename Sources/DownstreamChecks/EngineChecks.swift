@@ -71,6 +71,13 @@ func argumentBuilderChecks() async {
         expectEqual(ArgumentBuilder.validURL("not a url"), nil)
     }
 
+    await suite("ArgumentBuilder: metadata arguments") {
+        let args = ArgumentBuilder.metadataArguments(for: URL(string: "https://example.com/watch?v=a&list=b")!, cookies: nil)
+        expect(args.contains("--no-playlist"), "a video URL with a &list= parameter stays one video")
+        expect(args.contains("--flat-playlist"), "a pure playlist URL is still flattened")
+        expectEqual(Array(args.suffix(2)), ["--", "https://example.com/watch?v=a&list=b"])
+    }
+
     await suite("ArgumentBuilder: default video download") {
         let args = try ArgumentBuilder.downloadArguments(DownloadOptions(), context: context)
         expectEqual(Array(args.prefix(1)), ["--ignore-config"])
@@ -307,6 +314,43 @@ func processRunnerChecks() async {
         } catch let error as ProcessError {
             expectEqual(error, .timedOut)
         }
+    }
+
+    await suite("ProcessRunner: cancelAndWait") {
+        // Stopping a process makes its stream end with .cancelled (as in the cancel suite above).
+        // A well-behaved child: SIGINT alone ends it at once.
+        let quick = try ProcessRunner.start(sh, arguments: ["-c", "echo started; exec sleep 30"])
+        var start = ContinuousClock.now
+        do {
+            for try await line in quick.lines where line == .stdout("started") { quick.cancelAndWait(deadline: .seconds(5)) }
+        } catch { expectEqual(error as? ProcessError, .cancelled) }
+        expect(ContinuousClock.now - start < .seconds(3), "SIGINT alone ends it quickly")
+
+        // One that ignores SIGINT: the SIGTERM escalation inside the wait ends it.
+        let stubborn = try ProcessRunner.start(sh, arguments: ["-c", #"trap "" INT; echo started; while true; do sleep 0.1; done"#])
+        start = ContinuousClock.now
+        do {
+            for try await line in stubborn.lines where line == .stdout("started") {
+                stubborn.cancelAndWait(gracePeriod: .milliseconds(300), deadline: .seconds(5))
+            }
+        } catch { expectEqual(error as? ProcessError, .cancelled) }
+        let took = ContinuousClock.now - start
+        expect(took >= .milliseconds(250), "waited out the grace period")
+        expect(took < .seconds(3), "SIGTERM escalation ended it")
+
+        // One that ignores both signals: the wait gives up at the deadline instead of hanging.
+        // The pattern can't match the `pkill` wrapper's own command line (`[0-9a-f]*` doesn't
+        // match a literal "["), only the target whose argument holds the plain marker.
+        let marker = "downstream-cancelandwait-\(UUID().uuidString)"
+        let pattern = "downstream-cancelandwait-[0-9a-f]*"
+        let immovable = try ProcessRunner.start(sh, arguments: ["-c", #"trap "" INT TERM; echo started; while true; do sleep 0.1; done # \#(marker)"#])
+        try await Task.sleep(for: .milliseconds(100))   // let it start running
+        start = ContinuousClock.now
+        immovable.cancelAndWait(deadline: .milliseconds(500))
+        expect(ContinuousClock.now - start >= .milliseconds(450), "gave up at the deadline")
+        let stillRunning = try await ProcessRunner.output(of: sh, arguments: ["-c", "pgrep -f '\(pattern)' || true"])
+        expect(stillRunning != "", "a process ignoring both signals outlived the wait")
+        _ = try? await ProcessRunner.output(of: sh, arguments: ["-c", "pkill -9 -f '\(pattern)'; true"])
     }
 
     await suite("ProcessRunner: environment") {

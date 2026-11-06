@@ -66,6 +66,7 @@ public struct AppRelease: Decodable, Sendable, Equatable {
 
 public enum UpdateError: Error, Equatable, CustomStringConvertible {
     case noDiskImage
+    case noChecksum
     case checksumMismatch
     case notAnApp
     case wrongApp(bundleID: String?)
@@ -75,6 +76,7 @@ public enum UpdateError: Error, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .noDiskImage: String(localized: "This release has no disk image to install.")
+        case .noChecksum: String(localized: "This release has no checksum to verify the download against. Don't install it.")
         case .checksumMismatch: String(localized: "The download is damaged (its checksum doesn't match). Try again.")
         case .notAnApp: String(localized: "The disk image doesn't contain Downstream.")
         case .wrongApp(let id): String(localized: "The disk image contains a different app (\(id ?? "unknown")).")

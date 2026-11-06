@@ -178,6 +178,22 @@ func downloadJobChecks() async {
         expect(job.canRetry, "cancelled jobs can be retried")
     }
 
+    await suite("DownloadManager: unfinishedJob finds the duplicate link") {
+        let folder = makeFolder()
+        let otherFolder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder); try? FileManager.default.removeItem(at: otherFolder) }
+        let manager = DownloadManager()
+        manager.isHeld = true   // nothing runs; the added job stays queued
+        let url = URL(string: "https://example.com/dup")!
+        let job = manager.add(url: url, options: DownloadOptions(), title: "dup", thumbnailURL: nil,
+                              outputDirectory: folder, tools: DownloadTools(ytDlp: sh, ffmpeg: ffmpeg))
+        expectEqual(manager.unfinishedJob(url: url, outputDirectory: folder)?.id, job.id)
+        expect(manager.unfinishedJob(url: url, outputDirectory: otherFolder) == nil, "another folder doesn't clash")
+        expect(manager.unfinishedJob(url: URL(string: "https://example.com/other")!, outputDirectory: folder) == nil, "another link doesn't clash")
+        job.cancel()   // queued → cancelled: finished, so the link is free again
+        expect(manager.unfinishedJob(url: url, outputDirectory: folder) == nil, "a finished job isn't a duplicate")
+    }
+
     await suite("DownloadManager: never more than maxConcurrent, oldest first") {
         var order: [String] = []
         let manager = DownloadManager(maxConcurrent: 2, starter: script("sleep 0.3; echo '@@F /tmp/x.mp4'"))

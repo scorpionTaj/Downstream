@@ -36,11 +36,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
         downloads.onJobFinished = { [weak self] job in
             guard let self else { return }
-            if case .completed = job.state { library.record(job) }
+            // record(_:) itself gates on state: completed and failed jobs go to history,
+            // everything in between is ignored.
+            library.record(job)
             notify(about: job)
         }
         downloads.onQueueChanged = { [weak self] in self?.savePending() }
         tools.downloads = downloads
+        addDownload.downloads = downloads
         tools.onRefresh = { [weak self] in
             self?.restorePendingOnce()
             self?.tools.updateYtDlpIfDue()
@@ -199,9 +202,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Save before stopping: yt-dlp runs as a separate process and would otherwise keep going after the app quits.
+        // Save before stopping, then wait (bounded) for the child processes: after this returns
+        // the app dies, and a yt-dlp left running could keep writing the file the next session
+        // would resume.
         savePending()
-        downloads.pauseAll()
+        downloads.pauseAllAndWait()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool { true }

@@ -42,6 +42,9 @@ final class AddDownloadModel {
 
     private let library: Library
     private var fetchTask: Task<Void, Never>?
+    /// Set once the manager exists, so a link that's already downloading can be flagged.
+    /// (ToolSetupModel keeps its manager the same way.)
+    weak var downloads: DownloadManager?
 
     init(library: Library) {
         self.library = library
@@ -66,11 +69,13 @@ final class AddDownloadModel {
         isPresented = false
     }
 
-    /// Typing a new link discards info fetched for the old one.
+    /// Typing a new link discards info fetched for the old one, and cancels a fetch that's
+    /// still running: its result would belong to a link that's no longer in the field.
     func urlTextChanged() {
+        fetchTask?.cancel()
         switch phase {
-        case .ready, .failed: phase = .idle
-        case .idle, .fetching: break
+        case .ready, .failed, .fetching: phase = .idle
+        case .idle: break
         }
     }
 
@@ -84,12 +89,13 @@ final class AddDownloadModel {
         fetchTask = Task {
             do {
                 let info = try await MetadataFetcher(ytDlp: ytDlp).fetch(url)
-                guard !Task.isCancelled else { return }
+                // The link may have been edited while this ran; a result for the old link is dropped.
+                guard !Task.isCancelled, ArgumentBuilder.validURL(urlText) == url else { return }
                 applyDefaults(for: info)
                 selectedItems = Set(1...max(1, info.entries?.count ?? 1))
                 phase = .ready(info)
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, ArgumentBuilder.validURL(urlText) == url else { return }
                 phase = .failed(Self.message(for: error))
             }
         }
@@ -151,6 +157,10 @@ final class AddDownloadModel {
     var downloadBlocker: String? {
         guard let info else { return "" }
         if info.isPlaylist && selectedItems.isEmpty { return String(localized: "Select at least one video.") }
+        if let url = ArgumentBuilder.validURL(urlText),
+           downloads?.unfinishedJob(url: url, outputDirectory: folder) != nil {
+            return String(localized: "This link is already downloading.")
+        }
         return ArgumentBuilder.problem(with: makeOptions())?.description
     }
 
@@ -178,8 +188,12 @@ final class AddDownloadModel {
         guard let url = Self.clipboardLink else { return String(localized: "Copy a link first.") }
         let options = library.preset(id: AppSettings.defaultPresetID)?.options ?? AppSettings.defaultOptions
         if let problem = ArgumentBuilder.problem(with: options) { return problem.description }
+        let outputDirectory = AppSettings.downloadFolder
+        if manager.unfinishedJob(url: url, outputDirectory: outputDirectory) != nil {
+            return String(localized: "This link is already downloading.")
+        }
         let job = manager.add(url: url, options: options, title: nil, thumbnailURL: nil,
-                              outputDirectory: AppSettings.downloadFolder, tools: tools)
+                              outputDirectory: outputDirectory, tools: tools)
         Task {
             guard let info = try? await MetadataFetcher(ytDlp: tools.ytDlp).fetch(url, cookies: options.cookies) else { return }
             if let title = info.title { job.title = title }

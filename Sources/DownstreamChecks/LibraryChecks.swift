@@ -42,6 +42,22 @@ func libraryChecks() async {
                "a file from a newer version is kept, not overwritten")
     }
 
+    await suite("JSONFileStore: two unreadable files in the same second are both kept") {
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = JSONFileStore<[String: Int]>(directory: folder, name: "numbers")
+        // Two move-asides land in the same timestamped second; the backup names must not collide,
+        // or the second move fails silently and the next save destroys its unreadable file.
+        for garbage in ["not json", "more garbage"] {
+            try Data(garbage.utf8).write(to: store.url)
+            expectEqual(store.load(), nil)
+        }
+        let backups = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("numbers.unreadable-") }
+        expect(backups.count == 2, "both unreadable files got their own backup: \(backups)")
+        let contents = try backups.sorted().map { String(decoding: try Data(contentsOf: folder.appendingPathComponent($0)), as: UTF8.self) }
+        expect(contents.contains("not json") && contents.contains("more garbage"), "both contents survived: \(contents)")
+    }
+
     await suite("Library: history from completed jobs, newest first, persisted") {
         let folder = makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }

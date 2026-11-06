@@ -138,6 +138,19 @@ public final class DownloadJob: Identifiable {
         }
     }
 
+    /// Pauses, and if yt-dlp is running for this job, blocks the calling thread until it's gone
+    /// (or `deadline` passes). Only for quitting: the app is about to die, and a child left
+    /// running behind it would keep writing the file the next session would resume.
+    func pauseAndWait(deadline: Duration) {
+        switch state {
+        case .downloading:
+            stopRequest = .pause
+            process?.cancelAndWait(deadline: deadline)
+        default:
+            pause()
+        }
+    }
+
     /// Paused → queued.
     func resume() {
         if state == .paused { state = .queued }

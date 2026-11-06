@@ -45,7 +45,10 @@ public struct JSONFileStore<Value: Codable>: Sendable {
     private func moveAside(reason: String) {
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let base = url.deletingPathExtension().lastPathComponent
-        let destination = url.deletingLastPathComponent().appendingPathComponent("\(base).\(reason)-\(stamp).json")
+        // The UUID keeps two moves in the same second from colliding: if the destination existed,
+        // the move would fail silently and the next save would destroy the unreadable file.
+        let destination = url.deletingLastPathComponent()
+            .appendingPathComponent("\(base).\(reason)-\(stamp)-\(UUID().uuidString).json")
         try? FileManager.default.moveItem(at: url, to: destination)
     }
 
