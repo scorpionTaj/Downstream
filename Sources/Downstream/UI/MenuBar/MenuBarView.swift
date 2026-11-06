@@ -102,11 +102,8 @@ struct MenuBarView: View {
     }
 
     private var summary: String {
-        var parts: [String] = []
-        if downloads.runningCount > 0 { parts.append(String(localized: "\(downloads.runningCount) downloading")) }
-        if downloads.queuedCount > 0 { parts.append(String(localized: "\(downloads.queuedCount) queued")) }
-        if downloads.pausedCount > 0 { parts.append(String(localized: "\(downloads.pausedCount) paused")) }
-        if downloads.totalSpeed > 0 { parts.append(DownloadFormatting.speed(downloads.totalSpeed)) }
+        var parts = DownloadFormatting.queueSummary(running: downloads.runningCount, queued: downloads.queuedCount,
+                                                    paused: downloads.pausedCount, speed: downloads.totalSpeed)
         if tools.isUpdating { parts.append(String(localized: "updating yt-dlp")) }
         return parts.isEmpty ? String(localized: "Ready") : parts.joined(separator: " · ")
     }

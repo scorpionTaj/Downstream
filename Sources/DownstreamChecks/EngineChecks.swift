@@ -58,6 +58,42 @@ func mediaInfoChecks() async {
                     "[generic] 'foo' is not a valid URL")
         expectEqual(MetadataFetcher.errorMessage(from: ["only line"]), "only line")
     }
+
+    await suite("MetadataFetcher: fetch runs yt-dlp and reads its output") {
+        let ytDlp = URL(fileURLWithPath: "/opt/homebrew/bin/yt-dlp")
+        guard FileManager.default.isExecutableFile(atPath: ytDlp.path) else {
+            print("  · skipped: yt-dlp is not installed"); return
+        }
+        // A local server standing in for a site, rooted at this target's fixtures, so the whole
+        // fetch pipeline (spawn, parse, decode) runs without touching the network. yt-dlp's
+        // generic extractor reports a served JSON file as a direct link titled after the file name.
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        let server = try ProcessRunner.start(URL(fileURLWithPath: "/usr/bin/python3"),
+            arguments: ["-c", "import http.server, os; os.chdir(r'''\(fixtures.path)'''); s = http.server.HTTPServer((\"127.0.0.1\", 0), http.server.SimpleHTTPRequestHandler); print(s.server_address[1], flush=True); s.serve_forever()"])
+        defer { server.cancel() }
+        var port: String?
+        do { for try await line in server.lines { port = line.text; break } }
+        guard let port, let portNumber = Int(port.trimmingCharacters(in: .whitespaces)), portNumber > 0 else {
+            expect(false, "the local server didn't report a port"); return
+        }
+
+        let info = try await MetadataFetcher(ytDlp: ytDlp)
+            .fetch(URL(string: "http://127.0.0.1:\(portNumber)/video.json")!, timeout: .seconds(20))
+        expectEqual(info.title, "video")
+        expect(!info.isPlaylist, "a direct link is not a playlist")
+
+        // A missing page surfaces yt-dlp's error, not a crash.
+        do {
+            _ = try await MetadataFetcher(ytDlp: ytDlp)
+                .fetch(URL(string: "http://127.0.0.1:\(portNumber)/missing.json")!, timeout: .seconds(20))
+            expect(false, "a missing page must fail the fetch")
+        } catch let error as MetadataError {
+            guard case .ytDlpFailed(let message) = error else {
+                expect(false, "expected ytDlpFailed, got \(error)"); return
+            }
+            expect(message.contains("404") || message.contains("Unable to download"), "yt-dlp's error came through: \(message)")
+        }
+    }
 }
 
 func argumentBuilderChecks() async {

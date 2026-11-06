@@ -273,6 +273,28 @@ func downloadJobChecks() async {
         expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Title [id].json").path), "the user's .json survives")
     }
 
+    await suite("PartialFiles: aria2 transfers are cleaned up without reported names") {
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let now = Date()
+        func touch(_ name: String) { try? Data("x".utf8).write(to: folder.appendingPathComponent(name)) }
+        // aria2c reports nothing, so the control file and fragments are all there is to go on.
+        for name in ["Video [x].mp4", "Video [x].mp4.aria2", "Video [x].mp4.part-Frag1", "Video [x].mp4.f251.webm", "Video [x].nfo"] {
+            touch(name)
+        }
+        // A stale control file from an earlier session must not scope any cleanup.
+        let stale = folder.appendingPathComponent("Old [y].mkv.aria2")
+        try? Data("x".utf8).write(to: stale)
+        try? FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3600)], ofItemAtPath: stale.path)
+        touch("Old [y].mkv")
+
+        let removed = PartialFiles.remove(writtenBy: [], in: folder, since: now.addingTimeInterval(-5), keeping: [])
+        expect(removed == ["Video [x].mp4", "Video [x].mp4.aria2", "Video [x].mp4.f251.webm", "Video [x].mp4.part-Frag1"], "removed: \(removed)")
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Video [x].nfo").path), "the user's .nfo survives")
+        expect(FileManager.default.fileExists(atPath: stale.path), "the stale .aria2 survives")
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Old [y].mkv").path), "the stale target survives")
+    }
+
     await suite("DownloadFormatting") {
         expectEqual(DownloadFormatting.timeLeft(4.4), "4 s left")
         expectEqual(DownloadFormatting.timeLeft(125), "2 min left")

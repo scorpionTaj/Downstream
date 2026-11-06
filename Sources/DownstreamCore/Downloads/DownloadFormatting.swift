@@ -10,6 +10,18 @@ public enum DownloadFormatting {
         bytes(Int64(bytesPerSecond)) + "/s"
     }
 
+    /// The queue's status parts — "1 downloading", "2 queued", "3 paused", the total speed —
+    /// shared by the main window header and the menu bar, which add their own extras and pick
+    /// their own empty-state text.
+    public static func queueSummary(running: Int, queued: Int, paused: Int, speed: Double) -> [String] {
+        var parts: [String] = []
+        if running > 0 { parts.append(String(localized: "\(running) downloading")) }
+        if queued > 0 { parts.append(String(localized: "\(queued) queued")) }
+        if paused > 0 { parts.append(String(localized: "\(paused) paused")) }
+        if speed > 0 { parts.append(Self.speed(speed)) }
+        return parts
+    }
+
     /// "45 s left", "4 min left", "1 hr 5 min left".
     public static func timeLeft(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded()))

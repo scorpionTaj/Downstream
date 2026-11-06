@@ -1,3 +1,4 @@
+import AppKit
 import DownstreamCore
 import SwiftUI
 
@@ -156,6 +157,13 @@ struct CircleIconButtonStyle: ButtonStyle {
 }
 
 extension View {
+    /// A small round icon button, used across the download and history rows.
+    func circle(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: symbol, action: action)
+            .buttonStyle(CircleIconButtonStyle(color: color))
+            .help(title)
+    }
+
     /// A raised card: material background, a hairline tinted with `accent`, and a soft shadow.
     func card(accent: Color = .clear, padding: CGFloat = 14) -> some View {
         self
@@ -163,5 +171,13 @@ extension View {
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(accent.opacity(0.35), lineWidth: 1))
             .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+    }
+}
+
+/// The one place that touches the pasteboard.
+enum Clipboard {
+    static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }

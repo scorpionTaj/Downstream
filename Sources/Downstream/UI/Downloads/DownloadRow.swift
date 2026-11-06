@@ -88,12 +88,6 @@ struct DownloadRow: View {
         }
     }
 
-    private func circle(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: symbol, action: action)
-            .buttonStyle(CircleIconButtonStyle(color: color))
-            .help(title)
-    }
-
     @ViewBuilder
     private var menu: some View {
         if case .completed(let file) = job.state {
@@ -104,7 +98,7 @@ struct DownloadRow: View {
         if job.canPause { Button("Pause") { downloads.pause(job) } }
         if job.state == .paused { Button("Resume") { downloads.resume(job) } }
         if job.canRetry { Button("Retry") { downloads.retry(job) } }
-        Button("Copy link") { Self.copy(job.url.absoluteString) }
+        Button("Copy link") { Clipboard.copy(job.url.absoluteString) }
         Button("Show log") { window.logJob = job }
         Divider()
         if job.isFinished {
@@ -125,10 +119,5 @@ struct DownloadRow: View {
         } else {
             NSWorkspace.shared.open(file.deletingLastPathComponent())
         }
-    }
-
-    static func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
     }
 }

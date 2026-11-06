@@ -291,25 +291,44 @@ public enum PartialFiles {
             || name.hasSuffix(".info.json")           // metadata; a plain `.json` is too broad
     }
 
+    /// A file that reveals a download target without yt-dlp having reported it: aria2c's
+    /// control file, or a transfer fragment of the target itself.
+    static func isAria2Signal(_ name: String) -> Bool {
+        name.hasSuffix(".aria2") || (name as NSString).pathExtension.hasPrefix("part-Frag")
+    }
+
     /// For each file yt-dlp reported writing (e.g. `Title [id].f401.mp4`), deletes every file in `directory` that
     /// shares its base name (`Title [id].…`: `.part`, `.ytdl`, `.part-Frag3`, other formats, thumbnails, subtitles),
-    /// looks like a yt-dlp artifact, and was modified at or after `since`. Files outside `directory` and those in
-    /// `keeping` are never touched. Returns the names it deleted.
+    /// looks like a yt-dlp artifact, and was modified at or after `since`. aria2c transfers report no file names
+    /// at all, so when nothing was reported the `.aria2` control files newer than `since` identify the targets
+    /// instead. Files outside `directory` and those in `keeping` are never touched. Returns the names it deleted.
     @discardableResult
     public static func remove(writtenBy files: Set<String>, in directory: URL, since: Date, keeping: Set<String>,
                               fileManager: FileManager = .default) -> [String] {
         // Compare folders with symlinks resolved: both exist, so both resolve the same way. (`standardizedFileURL`
         // drops `/private` from an existing `/private/tmp/…` folder but not from a file that doesn't exist yet.)
         let directoryPath = directory.resolvingSymlinksInPath().path
-        let prefixes = Set(files.compactMap { path -> String? in
+        var prefixes = Set(files.compactMap { path -> String? in
             let url = URL(fileURLWithPath: path)
             guard url.deletingLastPathComponent().resolvingSymlinksInPath().path == directoryPath else { return nil }
             return baseName(of: url.lastPathComponent) + "."
         })
+        if let names = try? fileManager.contentsOfDirectory(atPath: directoryPath) {
+            // A `.aria2` control file (or a bare `.part-Frag*` fragment) names its target, so it
+            // scopes the cleanup even when yt-dlp never reported the file name. Only signals
+            // newer than `since` count, so a stale control file from an earlier session is ignored.
+            for name in names where isAria2Signal(name) {
+                let path = (directoryPath as NSString).appendingPathComponent(name)
+                guard let modified = (try? fileManager.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+                      modified >= since.addingTimeInterval(-1)  // file systems round timestamps
+                else { continue }
+                prefixes.insert(baseName(of: name) + ".")
+            }
+        }
         guard !prefixes.isEmpty, let names = try? fileManager.contentsOfDirectory(atPath: directoryPath) else { return [] }
         var removed: [String] = []
 
-        for name in names where prefixes.contains(where: name.hasPrefix) {
+        for name in names where prefixes.contains(where: { name.hasPrefix($0) || name + "." == $0 }) {
             guard isArtifact(name) else { continue }
             let path = (directoryPath as NSString).appendingPathComponent(name)
             guard !keeping.contains(path),

@@ -122,11 +122,8 @@ struct MainView: View {
             let failed = library.history.filter(\.isFailed).count
             return String(localized: "Remembered: \(library.history.count) · Failed: \(failed)")
         }
-        var parts: [String] = []
-        if downloads.runningCount > 0 { parts.append(String(localized: "\(downloads.runningCount) downloading")) }
-        if downloads.queuedCount > 0 { parts.append(String(localized: "\(downloads.queuedCount) queued")) }
-        if downloads.pausedCount > 0 { parts.append(String(localized: "\(downloads.pausedCount) paused")) }
-        if downloads.totalSpeed > 0 { parts.append(DownloadFormatting.speed(downloads.totalSpeed)) }
+        let parts = DownloadFormatting.queueSummary(running: downloads.runningCount, queued: downloads.queuedCount,
+                                                    paused: downloads.pausedCount, speed: downloads.totalSpeed)
         return parts.isEmpty ? String(localized: "Nothing in progress") : parts.joined(separator: " · ")
     }
 
@@ -260,7 +257,7 @@ struct LogSheet: View {
                     .truncationMode(.middle)
                     .textSelection(.enabled)
                 Spacer()
-                Button("Copy log") { DownloadRow.copy(job.log.joined(separator: "\n")) }
+                Button("Copy log") { Clipboard.copy(job.log.joined(separator: "\n")) }
                 Button("Close") { dismiss() }
                     .buttonStyle(SunsetButtonStyle())
                     .keyboardShortcut(.defaultAction)

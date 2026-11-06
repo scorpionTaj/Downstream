@@ -106,8 +106,8 @@ private struct HistoryRow: View {
                 Divider()
             }
             Button(entry.isFailed ? "Try again" : "Download again", action: downloadAgain)
-            Button("Copy link") { DownloadRow.copy(entry.url.absoluteString) }
-            if let failure = entry.failure { Button("Copy error") { DownloadRow.copy(failure) } }
+            Button("Copy link") { Clipboard.copy(entry.url.absoluteString) }
+            if let failure = entry.failure { Button("Copy error") { Clipboard.copy(failure) } }
             Divider()
             Button("Remove from history") { library.removeHistory(entry) }
         }
@@ -128,11 +128,5 @@ private struct HistoryRow: View {
         guard let downloadTools = tools.downloadTools else { return }
         downloads.downloadAgain(entry, outputDirectory: AppSettings.downloadFolder, tools: downloadTools)
         window.filter = .all
-    }
-
-    private func circle(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: symbol, action: action)
-            .buttonStyle(CircleIconButtonStyle(color: color))
-            .help(title)
     }
 }
