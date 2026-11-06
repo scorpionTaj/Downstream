@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let library = Library(directory: AppSettings.dataDirectory)
     let addDownload: AddDownloadModel
     let window = MainWindowModel()
+    let settings = SettingsModel()
 
     /// Unfinished downloads from the last session are only written back once they've been restored;
     /// until then the saved file is left alone, so quitting before the tools are found loses nothing.
@@ -25,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         downloads.onQueueChanged = { [weak self] in self?.savePending() }
         tools.onRefresh = { [weak self] in self?.restorePendingOnce() }
+        settings.onMaxConcurrentChanged = { [weak self] in self?.downloads.maxConcurrent = $0 }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

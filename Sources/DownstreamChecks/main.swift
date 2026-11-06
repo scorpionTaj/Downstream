@@ -34,6 +34,7 @@ await argumentBuilderChecks()
 await progressParserChecks()
 await downloadJobChecks()
 await libraryChecks()
+await advancedOptionChecks()
 if CommandLine.arguments.contains("--live") { await liveChecks() }
 
 print(failures == 0 ? "\nAll \(passes) checks passed." : "\n\(failures) failed, \(passes) passed.")

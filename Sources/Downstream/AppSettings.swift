@@ -29,6 +29,35 @@ enum AppSettings {
             ?? Library.defaultDirectory
     }
 
+    /// The options new downloads start from when no preset is chosen. Edited in Settings › Download defaults.
+    static var defaultOptions: DownloadOptions {
+        get {
+            UserDefaults.standard.data(forKey: "defaultDownloadOptions")
+                .flatMap { try? JSONDecoder().decode(DownloadOptions.self, from: $0) } ?? DownloadOptions()
+        }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "defaultDownloadOptions") }
+    }
+
+    /// Paths the user chose for each tool, used before Homebrew's directories.
+    static var toolOverrides: [Tool: String] {
+        get {
+            let stored = UserDefaults.standard.dictionary(forKey: "toolPaths") as? [String: String] ?? [:]
+            return Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Tool(rawValue: key).map { ($0, value) } })
+        }
+        set {
+            let stored = Dictionary(uniqueKeysWithValues: newValue.filter { !$0.value.isEmpty }.map { ($0.key.rawValue, $0.value) })
+            UserDefaults.standard.set(stored, forKey: "toolPaths")
+        }
+    }
+
+    static func setMaxConcurrentDownloads(_ value: Int) {
+        UserDefaults.standard.set(max(1, value), forKey: maxConcurrentKey)
+    }
+
+    static func setNotificationsEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: notificationsKey)
+    }
+
     /// The preset applied when the Add Download sheet opens. nil means Downstream's defaults.
     static var defaultPresetID: UUID? {
         get { UserDefaults.standard.string(forKey: "defaultPresetID").flatMap(UUID.init(uuidString:)) }

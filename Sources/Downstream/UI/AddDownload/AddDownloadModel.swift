@@ -32,8 +32,11 @@ final class AddDownloadModel {
 
     /// The preset the choices came from, or nil for Downstream's defaults.
     private(set) var presetID: UUID?
-    /// The preset's full options. Settings the sheet doesn't show (SponsorBlock, cookies…) come from here.
-    private var baseOptions = DownloadOptions()
+    /// The full options: the preset's (or the defaults from Settings), with "More options" edited in place.
+    /// The simple choices above are kept in their own properties and laid over these by `makeOptions()`.
+    var options = AppSettings.defaultOptions
+    /// For a playlist, the 1-based numbers of the items to download.
+    var selectedItems: Set<Int> = []
     var isNamingPreset = false
     var newPresetName = ""
 
@@ -83,6 +86,7 @@ final class AddDownloadModel {
                 let info = try await MetadataFetcher(ytDlp: ytDlp).fetch(url)
                 guard !Task.isCancelled else { return }
                 applyDefaults(for: info)
+                selectedItems = Set(1...max(1, info.entries?.count ?? 1))
                 phase = .ready(info)
             } catch {
                 guard !Task.isCancelled else { return }
@@ -125,7 +129,7 @@ final class AddDownloadModel {
     }
 
     func makeOptions() -> DownloadOptions {
-        var options = baseOptions
+        var options = options
         options.kind = kind
         options.maxHeight = maxHeight
         options.container = container
@@ -133,6 +137,9 @@ final class AddDownloadModel {
         options.embedThumbnail = embedThumbnailAndMetadata
         options.embedMetadata = embedThumbnailAndMetadata
         options.downloadPlaylist = info?.isPlaylist ?? false
+        options.playlistItems = options.downloadPlaylist
+            ? PlaylistSelection.spec(selected: selectedItems, count: info?.entries?.count ?? 0)
+            : nil
         options.subtitles = nil
         if kind == .video, subtitlesEnabled, !subtitleLanguage.isEmpty {
             options.subtitles = SubtitleOptions(languages: [subtitleLanguage], includeAutomatic: isAutomatic(subtitleLanguage), embed: true)
@@ -140,8 +147,15 @@ final class AddDownloadModel {
         return options
     }
 
+    /// Why the Download button is disabled, or nil when it can be pressed.
+    var downloadBlocker: String? {
+        guard let info else { return "" }
+        if info.isPlaylist && selectedItems.isEmpty { return "Select at least one video." }
+        return ArgumentBuilder.problem(with: makeOptions())?.description
+    }
+
     func start(in manager: DownloadManager, tools: DownloadTools) {
-        guard let info, let url = ArgumentBuilder.validURL(urlText) else { return }
+        guard let info, let url = ArgumentBuilder.validURL(urlText), downloadBlocker == nil else { return }
         AppSettings.downloadFolder = folder
         manager.add(url: url, options: makeOptions(), title: info.title,
                     thumbnailURL: info.thumbnail.flatMap(URL.init(string:)),
@@ -165,14 +179,14 @@ final class AddDownloadModel {
     func applyPreset(id: UUID?) {
         let preset = library.preset(id: id)
         presetID = preset?.id
-        baseOptions = preset?.options ?? DownloadOptions()
-        kind = baseOptions.kind
-        maxHeight = baseOptions.maxHeight
-        container = baseOptions.container
-        audioFormat = baseOptions.audioFormat
-        embedThumbnailAndMetadata = baseOptions.embedThumbnail && baseOptions.embedMetadata
-        subtitlesEnabled = baseOptions.subtitles != nil
-        if let language = baseOptions.subtitles?.languages.first { subtitleLanguage = language }
+        options = preset?.options ?? AppSettings.defaultOptions
+        kind = options.kind
+        maxHeight = options.maxHeight
+        container = options.container
+        audioFormat = options.audioFormat
+        embedThumbnailAndMetadata = options.embedThumbnail && options.embedMetadata
+        subtitlesEnabled = options.subtitles != nil
+        if let language = options.subtitles?.languages.first { subtitleLanguage = language }
         if let info { chooseSubtitleLanguage(for: info) }
     }
 
@@ -187,7 +201,7 @@ final class AddDownloadModel {
         guard !name.isEmpty else { return }
         let preset = library.savePreset(named: name, options: Self.comparable(makeOptions()))
         presetID = preset.id
-        baseOptions = preset.options
+        options = preset.options
     }
 
     func deleteSelectedPreset() {
@@ -195,7 +209,7 @@ final class AddDownloadModel {
         if AppSettings.defaultPresetID == preset.id { AppSettings.defaultPresetID = nil }
         library.deletePreset(preset)
         presetID = nil
-        baseOptions = DownloadOptions()
+        options = AppSettings.defaultOptions
     }
 
     func setDefaultPreset(_ isDefault: Bool) {

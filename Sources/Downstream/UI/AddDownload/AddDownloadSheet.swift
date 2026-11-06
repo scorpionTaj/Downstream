@@ -39,7 +39,21 @@ struct AddDownloadSheet: View {
                     .textSelection(.enabled)
             case .ready(let info):
                 MediaPreview(info: info)
-                choices
+                // Choices can outgrow the window (a long playlist, More options), so they scroll.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let entries = info.entries, !entries.isEmpty {
+                            PlaylistPicker(entries: entries, selection: $model.selectedItems)
+                        }
+                        choices
+                        DisclosureGroup("More options") {
+                            AdvancedOptionsView(options: $model.options, aria2Available: tools.downloadTools?.aria2c != nil)
+                                .padding(.top, 8)
+                        }
+                    }
+                    .padding(.trailing, 12)
+                }
+                .frame(maxHeight: 380)
             }
 
             HStack(spacing: 6) {
@@ -55,6 +69,12 @@ struct AddDownloadSheet: View {
             .accessibilityLabel("Save to \(model.folder.abbreviatedPath)")
 
             HStack {
+                if let blocker = model.downloadBlocker, !blocker.isEmpty {
+                    Text(blocker)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
                 Spacer()
                 Button("Cancel") { model.dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -63,11 +83,11 @@ struct AddDownloadSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(model.info == nil || tools.downloadTools == nil)
+                .disabled(model.downloadBlocker != nil || tools.downloadTools == nil)
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: 600)
         .alert("Save preset", isPresented: $model.isNamingPreset) {
             TextField("Name", text: $model.newPresetName)
             Button("Save") { model.saveNamedPreset() }

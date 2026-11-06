@@ -317,3 +317,30 @@ func processRunnerChecks() async {
     }
 }
 
+
+func advancedOptionChecks() async {
+    await suite("PlaylistSelection.spec") {
+        expectEqual(PlaylistSelection.spec(selected: [1, 2, 3, 5, 7, 8, 9], count: 10), "1:3,5,7:9")
+        expectEqual(PlaylistSelection.spec(selected: [4], count: 10), "4")
+        expectEqual(PlaylistSelection.spec(selected: Set(1...10), count: 10), nil)   // everything: no filter
+        expectEqual(PlaylistSelection.spec(selected: [], count: 10), nil)
+        expectEqual(PlaylistSelection.spec(selected: [2, 99], count: 3), "2")          // out-of-range items ignored
+        var options = DownloadOptions()
+        options.downloadPlaylist = true
+        options.playlistItems = PlaylistSelection.spec(selected: [1, 2, 4], count: 5)
+        let args = try ArgumentBuilder.downloadArguments(options, context: DownloadContext(
+            url: URL(string: "https://example.com/list")!, outputDirectory: URL(fileURLWithPath: "/tmp"),
+            ffmpeg: URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")))
+        expect(args.contains("1:2,4"), "spec reaches yt-dlp: \(args)")
+    }
+
+    await suite("ArgumentBuilder.problem(with:)") {
+        expectEqual(ArgumentBuilder.problem(with: DownloadOptions()), nil)
+        var options = DownloadOptions()
+        options.extraArguments = "--format 'best"
+        expectEqual(ArgumentBuilder.problem(with: options), .unbalancedQuote)
+        options.extraArguments = ""
+        options.filenameTemplate = "../x.%(ext)s"
+        expectEqual(ArgumentBuilder.problem(with: options), .invalidFilenameTemplate("../x.%(ext)s"))
+    }
+}

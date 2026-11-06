@@ -21,6 +21,7 @@ struct DownstreamApp: App {
                 .environment(app.addDownload)
                 .environment(app.window)
                 .environment(app.library)
+                .environment(app.settings)
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -29,6 +30,12 @@ struct DownstreamApp: App {
                     .keyboardShortcut("n")
                     .disabled(app.tools.downloadTools == nil)
             }
+        }
+
+        Settings {
+            SettingsView()
+                .environment(app.settings)
+                .environment(app.tools)
         }
     }
 }
@@ -45,7 +52,7 @@ struct RootView: View {
                 ToolSetupView()
             }
         }
-        .frame(minWidth: 780, minHeight: 560)  // big enough for the Add Download sheet
+        .frame(minWidth: 780, minHeight: 640)  // room for the Add Download sheet, which can't be taller than the window
         // The first tool check runs from AppDelegate at launch.
     }
 }

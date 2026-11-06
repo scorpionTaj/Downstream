@@ -171,6 +171,19 @@ public enum ArgumentBuilder {
         }
     }
 
+    /// What's wrong with these options, or nil if yt-dlp can be started with them. For showing next to the controls.
+    public static func problem(with options: DownloadOptions) -> ArgumentError? {
+        do {
+            try validate(options)
+            _ = try splitArguments(options.extraArguments)
+            return nil
+        } catch let error as ArgumentError {
+            return error
+        } catch {
+            return nil
+        }
+    }
+
     static func validate(_ options: DownloadOptions) throws {
         if !(0...10).contains(options.audioQuality) {
             throw ArgumentError.outOfRange(setting: "Audio quality", allowed: 0...10)
