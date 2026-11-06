@@ -78,6 +78,7 @@
 "Couldn't read this link: %@" = "Impossible de lire ce lien : %@";
 "Couldn't replace the app: %@" = "Impossible de remplacer l’app : %@";
 "Couldn't run Homebrew: %@" = "Impossible de lancer Homebrew : %@";
+"Couldn't start Downstream again automatically." = "Impossible de relancer Downstream automatiquement.";
 "Couldn't start the download" = "Impossible de lancer le téléchargement";
 "Custom path (optional)" = "Chemin personnalisé (facultatif)";
 "Cut out segments" = "Couper les segments";
@@ -146,6 +147,7 @@
 "Get Homebrew" = "Obtenir Homebrew";
 "Get started" = "Commencer";
 "Getting video info…" = "Récupération des informations…";
+"GitHub is limiting requests right now. Try again later." = "GitHub limite les requêtes pour le moment. Réessayez plus tard.";
 "Help" = "Aide";
 "Hide the Dock icon" = "Masquer l’icône du Dock";
 "History" = "Historique";
@@ -210,6 +212,7 @@
 "Open" = "Ouvrir";
 "Open Downloads Folder" = "Ouvrir le dossier des téléchargements";
 "Open Downstream" = "Ouvrir Downstream";
+"Open Downstream manually; quitting now." = "Ouvrez Downstream manuellement ; fermeture en cours.";
 "Or press ⇧⌘V to download the copied link straight away" = "Ou appuyez sur ⇧⌘V pour télécharger directement le lien copié";
 "Page %lld of %lld" = "Page %lld sur %lld";
 "Passed to yt-dlp as-is, after Downstream's own. They're never run through a shell." = "Transmis tels quels à yt-dlp, après ceux de Downstream. Jamais exécutés dans un shell.";
@@ -298,10 +301,14 @@
 "The disk image doesn't contain Downstream." = "L’image disque ne contient pas Downstream.";
 "The download is damaged (its checksum doesn't match). Try again." = "Le téléchargement est endommagé (somme de contrôle incorrecte). Réessayez.";
 "The extra arguments have a quote that isn't closed." = "Les arguments supplémentaires contiennent un guillemet non fermé.";
+"The new version couldn't be moved into place, and the old one couldn't be restored automatically. It is still in the Trash — put it back, then try again. (%@)" = "La nouvelle version n'a pas pu être mise en place et l'ancienne n'a pas pu être restaurée automatiquement. Elle est toujours dans la Corbeille — remettez-la, puis réessayez. (%@)";
 "The new version's signature isn't valid: %@" = "La signature de la nouvelle version n’est pas valide : %@";
 "The site took too long to answer. Try again." = "Le site a mis trop de temps à répondre. Réessayez.";
 "The update couldn't be downloaded: %@" = "La mise à jour n’a pas pu être téléchargée : %@";
+"The update server answered with status %lld." = "Le serveur de mise à jour a répondu avec le statut %lld.";
 "They'll be paused and listed again the next time you open Downstream, ready to resume." = "Ils seront mis en pause et réapparaîtront à la prochaine ouverture de Downstream, prêts à reprendre.";
+"This link is already downloading." = "Ce lien est déjà en cours de téléchargement.";
+"This release has no checksum to verify the download against. Don't install it." = "Cette version n'a pas de somme de contrôle pour vérifier le téléchargement. Ne l'installez pas.";
 "This release has no disk image to install." = "Cette version ne contient pas d’image disque à installer.";
 "This removes %lld entries from Downstream. The downloaded files stay where they are." = "Cela retire %lld entrées de Downstream. Les fichiers téléchargés restent à leur place.";
 "Thumbnail" = "Miniature";
@@ -329,6 +336,7 @@
 "Video or audio from any site yt-dlp supports" = "Vidéo ou audio depuis n’importe quel site pris en charge par yt-dlp";
 "Video up to 4K, or audio only in MP3, FLAC and more" = "Vidéo jusqu’en 4K, ou audio seul en MP3, FLAC et plus";
 "View on GitHub" = "Voir sur GitHub";
+"Waiting for the running downloads to finish…" = "En attente de la fin des téléchargements en cours…";
 "Watch and control downloads from the menu bar" = "Suivez et contrôlez les téléchargements depuis la barre des menus";
 "Welcome Guide" = "Guide de bienvenue";
 "Welcome to Downstream" = "Bienvenue dans Downstream";

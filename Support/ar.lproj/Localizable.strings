@@ -78,6 +78,7 @@
 "Couldn't read this link: %@" = "تعذّرت قراءة هذا الرابط: %@";
 "Couldn't replace the app: %@" = "تعذّر استبدال التطبيق: %@";
 "Couldn't run Homebrew: %@" = "تعذّر تشغيل Homebrew: %@";
+"Couldn't start Downstream again automatically." = "تعذّر بدء تشغيل Downstream تلقائيًا مجددًا.";
 "Couldn't start the download" = "تعذّر بدء التنزيل";
 "Custom path (optional)" = "مسار مخصّص (اختياري)";
 "Cut out segments" = "قص المقاطع";
@@ -146,6 +147,7 @@
 "Get Homebrew" = "احصل على Homebrew";
 "Get started" = "ابدأ";
 "Getting video info…" = "جارٍ جلب معلومات الفيديو…";
+"GitHub is limiting requests right now. Try again later." = "يحدّ GitHub من الطلبات حاليًا. حاول مرة أخرى لاحقًا.";
 "Help" = "المساعدة";
 "Hide the Dock icon" = "إخفاء الأيقونة من Dock";
 "History" = "السجل";
@@ -210,6 +212,7 @@
 "Open" = "فتح";
 "Open Downloads Folder" = "فتح مجلد التنزيلات";
 "Open Downstream" = "فتح Downstream";
+"Open Downstream manually; quitting now." = "افتح Downstream يدويًا؛ جارٍ الإنهاء الآن.";
 "Or press ⇧⌘V to download the copied link straight away" = "أو اضغط ⇧⌘V لتنزيل الرابط المنسوخ فورًا";
 "Page %lld of %lld" = "الصفحة %lld من %lld";
 "Passed to yt-dlp as-is, after Downstream's own. They're never run through a shell." = "تُمرَّر إلى yt-dlp كما هي بعد وسائط Downstream. لا تُشغَّل أبدًا عبر صدفة الأوامر.";
@@ -298,10 +301,14 @@
 "The disk image doesn't contain Downstream." = "لا تحتوي صورة القرص على Downstream.";
 "The download is damaged (its checksum doesn't match). Try again." = "التنزيل تالف (لا يتطابق المجموع الاختباري). حاول مجددًا.";
 "The extra arguments have a quote that isn't closed." = "تحتوي الوسائط الإضافية على علامة اقتباس غير مغلقة.";
+"The new version couldn't be moved into place, and the old one couldn't be restored automatically. It is still in the Trash — put it back, then try again. (%@)" = "تعذّر نقل الإصدار الجديد إلى مكانه، وتعذّرت استعادة الإصدار القديم تلقائيًا. لا يزال في المهملات — أعده، ثم حاول مجددًا. (%@)";
 "The new version's signature isn't valid: %@" = "توقيع الإصدار الجديد غير صالح: %@";
 "The site took too long to answer. Try again." = "استغرق الموقع وقتًا طويلًا للرد. حاول مرة أخرى.";
 "The update couldn't be downloaded: %@" = "تعذّر تنزيل التحديث: %@";
+"The update server answered with status %lld." = "أجاب خادم التحديث بالحالة %lld.";
 "They'll be paused and listed again the next time you open Downstream, ready to resume." = "سيتم إيقافها مؤقتًا وستظهر مجددًا عند فتح Downstream في المرة القادمة، جاهزة للاستئناف.";
+"This link is already downloading." = "هذا الرابط قيد التنزيل بالفعل.";
+"This release has no checksum to verify the download against. Don't install it." = "لا يحتوي هذا الإصدار على مجموع تحقق للتحقق من التنزيل. لا تثبّته.";
 "This release has no disk image to install." = "لا يحتوي هذا الإصدار على صورة قرص للتثبيت.";
 "This removes %lld entries from Downstream. The downloaded files stay where they are." = "سيؤدي هذا إلى إزالة %lld عنصرًا من Downstream. تبقى الملفات المنزّلة في مكانها.";
 "Thumbnail" = "الصورة المصغّرة";
@@ -329,6 +336,7 @@
 "Video or audio from any site yt-dlp supports" = "فيديو أو صوت من أي موقع يدعمه yt-dlp";
 "Video up to 4K, or audio only in MP3, FLAC and more" = "فيديو حتى دقة 4K، أو صوت فقط بصيغ MP3 وFLAC وغيرها";
 "View on GitHub" = "عرض على GitHub";
+"Waiting for the running downloads to finish…" = "في انتظار انتهاء التنزيلات الجارية…";
 "Watch and control downloads from the menu bar" = "تابع التنزيلات وتحكّم بها من شريط القوائم";
 "Welcome Guide" = "دليل الترحيب";
 "Welcome to Downstream" = "مرحبًا بك في Downstream";

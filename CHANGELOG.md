@@ -2,6 +2,30 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.2.2] - 2026-11-06
+
+### Fixed
+- Failed downloads are now kept in History, so the Failed filter and "Try again" work; they used to vanish when the app quit.
+- Editing the link while the Add Download sheet was still fetching could start a download with the previous video's details. The stale fetch is now cancelled.
+- Quitting while a download runs now waits (up to a few seconds) for yt-dlp to stop, so nothing keeps running after the app is gone and resuming can't collide with a leftover process.
+- A video link that carries a `&list=` parameter downloads just that video again, not the whole playlist.
+- Adding the same link into the same folder twice is refused — two downloads would write the same files. The sheet says the link is already downloading.
+- "Update yt-dlp Now" waits for running downloads to finish instead of replacing yt-dlp underneath them.
+- Cancelling an aria2 download now removes its partial files and control file (nothing was cleaned up before, since aria2 reports no file names).
+- Cancelling a download only deletes yt-dlp's own partial files now; your own files sharing the video's name (`.nfo`, `.txt`, `.json`…) are left alone.
+- An update whose release ships no checksum is refused instead of installed with only a signature check.
+- A failed update says so when the old version had to be left in the Trash.
+- A version heading like `1.2.2-beta` no longer breaks the "What's New" parser.
+- History survives a corrupted file: two unsalvageable saves in the same second no longer destroy each other's backup.
+- Relaunching after an update can no longer hang on a stalled quit, and says so when it can't relaunch.
+
+### Improved
+- Tool checks (yt-dlp, ffmpeg, aria2) run in parallel, so "Check again" is up to three times faster.
+- A tool path that points to a folder is rejected instead of failing confusingly later.
+- A GitHub rate limit or other HTTP error now says what happened instead of a generic network error.
+- One damaged format in a video's metadata no longer hides the rest of the quality list.
+- The build is warning-free and CI fails on any new warning.
+
 ## [1.2.1] - 2026-11-06
 
 ### Fixed

@@ -362,6 +362,14 @@ T = {
 "What's new in Downstream": ("Nouveautés de Downstream", "ما الجديد في Downstream"),
 "Continue": ("Continuer", "متابعة"),
 "%@ (optional)": ("%@ (facultatif)", "%@ (اختياري)"),
+"This link is already downloading.": ("Ce lien est déjà en cours de téléchargement.", "هذا الرابط قيد التنزيل بالفعل."),
+"Waiting for the running downloads to finish…": ("En attente de la fin des téléchargements en cours…", "في انتظار انتهاء التنزيلات الجارية…"),
+"This release has no checksum to verify the download against. Don't install it.": ("Cette version n'a pas de somme de contrôle pour vérifier le téléchargement. Ne l'installez pas.", "لا يحتوي هذا الإصدار على مجموع تحقق للتحقق من التنزيل. لا تثبّته."),
+"GitHub is limiting requests right now. Try again later.": ("GitHub limite les requêtes pour le moment. Réessayez plus tard.", "يحدّ GitHub من الطلبات حاليًا. حاول مرة أخرى لاحقًا."),
+"The update server answered with status %lld.": ("Le serveur de mise à jour a répondu avec le statut %lld.", "أجاب خادم التحديث بالحالة %lld."),
+"The new version couldn't be moved into place, and the old one couldn't be restored automatically. It is still in the Trash — put it back, then try again. (%@)": ("La nouvelle version n'a pas pu être mise en place et l'ancienne n'a pas pu être restaurée automatiquement. Elle est toujours dans la Corbeille — remettez-la, puis réessayez. (%@)", "تعذّر نقل الإصدار الجديد إلى مكانه، وتعذّرت استعادة الإصدار القديم تلقائيًا. لا يزال في المهملات — أعده، ثم حاول مجددًا. (%@)"),
+"Couldn't start Downstream again automatically.": ("Impossible de relancer Downstream automatiquement.", "تعذّر بدء تشغيل Downstream تلقائيًا مجددًا."),
+"Open Downstream manually; quitting now.": ("Ouvrez Downstream manuellement ; fermeture en cours.", "افتح Downstream يدويًا؛ جارٍ الإنهاء الآن."),
 }
 out = pathlib.Path(sys.argv[1])
 def esc(s): return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
