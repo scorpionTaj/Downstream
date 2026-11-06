@@ -2,6 +2,11 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.2.3] - 2026-11-06
+
+### Improved
+- The working bar — starting a download, converting, embedding, installing an update — is clearer: the whole bar is more strongly tinted and the moving shine is brighter, so it can't be mistaken for a partial bar. The shine still sweeps the full width from edge to edge.
+
 ## [1.2.2] - 2026-11-06
 
 ### Fixed
