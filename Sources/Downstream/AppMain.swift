@@ -20,6 +20,7 @@ struct DownstreamApp: App {
                 .environment(app.downloads)
                 .environment(app.addDownload)
                 .environment(app.window)
+                .environment(app.library)
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -44,9 +45,7 @@ struct RootView: View {
                 ToolSetupView()
             }
         }
-        .frame(minWidth: 760, minHeight: 540)  // tall enough for the Add Download sheet
-        .task {
-            if tools.report == nil { await tools.refresh() }
-        }
+        .frame(minWidth: 780, minHeight: 560)  // big enough for the Add Download sheet
+        // The first tool check runs from AppDelegate at launch.
     }
 }

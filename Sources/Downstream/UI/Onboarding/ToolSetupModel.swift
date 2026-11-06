@@ -14,6 +14,9 @@ final class ToolSetupModel {
 
     private let locator: ToolLocator
 
+    /// Called after every check, e.g. to restore saved downloads once the tools are found.
+    var onRefresh: (() -> Void)?
+
     /// The tools downloads use, or nil until the required ones are found.
     var downloadTools: DownloadTools? { report.flatMap(DownloadTools.init(report:)) }
 
@@ -33,6 +36,7 @@ final class ToolSetupModel {
         didCopyCommand = false
         report = await locator.check()
         isChecking = false
+        onRefresh?()
     }
 
     func copyInstallCommand() {

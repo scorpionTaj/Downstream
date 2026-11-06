@@ -43,6 +43,8 @@ public final class DownloadManager {
 
     /// Called once each time a job completes or fails (not when it's paused or cancelled).
     public var onJobFinished: ((DownloadJob) -> Void)?
+    /// Called after anything that changes which downloads are unfinished, so they can be saved.
+    public var onQueueChanged: (() -> Void)?
 
     private let starter: ProcessStarter
     /// Jobs handed to a run task. Tracked separately from `state`, which only changes once the task starts.
@@ -75,24 +77,31 @@ public final class DownloadManager {
                               title: title, thumbnailURL: thumbnailURL)
         jobs.insert(job, at: 0)
         schedule()
+        onQueueChanged?()
         return job
     }
 
-    public func pause(_ job: DownloadJob) { job.pause() }
+    public func pause(_ job: DownloadJob) {
+        job.pause()
+        onQueueChanged?()
+    }
 
     public func resume(_ job: DownloadJob) {
         job.resume()
         schedule()
+        onQueueChanged?()
     }
 
     public func retry(_ job: DownloadJob) {
         job.retry()
         schedule()
+        onQueueChanged?()
     }
 
     public func cancel(_ job: DownloadJob) {
         job.cancel()
         schedule()
+        onQueueChanged?()
     }
 
     /// Removes a job from the list. A queued or paused one is cancelled first (deleting its partial files);
@@ -101,10 +110,27 @@ public final class DownloadManager {
         guard !started.contains(job.id) else { return }
         if !job.isFinished { job.cancel() }
         jobs.removeAll { $0.id == job.id }
+        onQueueChanged?()
     }
 
     public func removeFinished() {
         jobs.removeAll { $0.isFinished }
+    }
+
+    /// Unfinished downloads, oldest first, for saving.
+    public var pendingDownloads: [PendingDownload] { jobs.reversed().compactMap(\.pendingSnapshot) }
+
+    /// Adds downloads saved at the last quit, paused, below anything already in the list.
+    public func restore(_ pending: [PendingDownload], tools: DownloadTools) {
+        let restored = pending.reversed().map { DownloadJob(restoring: $0, tools: tools) }
+        jobs.append(contentsOf: restored)
+    }
+
+    /// Queues a new download with the same link and options as a finished one.
+    @discardableResult
+    public func downloadAgain(_ entry: HistoryEntry, outputDirectory: URL, tools: DownloadTools) -> DownloadJob {
+        add(url: entry.url, options: entry.options, title: entry.title, thumbnailURL: entry.thumbnailURL,
+            outputDirectory: outputDirectory, tools: tools)
     }
 
     /// Pauses everything, keeping partial files. Used when the app quits.
@@ -132,6 +158,7 @@ public final class DownloadManager {
                 default: break
                 }
                 schedule()
+                onQueueChanged?()
             }
         }
     }

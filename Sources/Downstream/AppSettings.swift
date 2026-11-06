@@ -22,6 +22,19 @@ enum AppSettings {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads/Downstream", isDirectory: true)
     }
 
+    /// Where history, presets and unfinished downloads are saved. Overridable for testing:
+    ///   open build/Downstream.app --args -DownstreamDataDirectory /some/folder
+    static var dataDirectory: URL {
+        UserDefaults.standard.string(forKey: "DownstreamDataDirectory").map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Library.defaultDirectory
+    }
+
+    /// The preset applied when the Add Download sheet opens. nil means Downstream's defaults.
+    static var defaultPresetID: UUID? {
+        get { UserDefaults.standard.string(forKey: "defaultPresetID").flatMap(UUID.init(uuidString:)) }
+        set { UserDefaults.standard.set(newValue?.uuidString, forKey: "defaultPresetID") }
+    }
+
     /// Where new downloads go. The app isn't sandboxed, so a plain path is enough.
     static var downloadFolder: URL {
         get {

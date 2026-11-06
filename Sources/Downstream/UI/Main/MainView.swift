@@ -6,6 +6,7 @@ struct MainView: View {
     @Environment(AddDownloadModel.self) private var addDownload
     @Environment(ToolSetupModel.self) private var tools
     @Environment(MainWindowModel.self) private var window
+    @Environment(Library.self) private var library
 
     var body: some View {
         @Bindable var addDownload = addDownload
@@ -13,26 +14,38 @@ struct MainView: View {
 
         NavigationSplitView {
             List(selection: Binding(get: { window.filter }, set: { window.filter = $0 ?? .all })) {
-                ForEach(DownloadFilter.allCases) { filter in
-                    let count = downloads.jobs.filter(filter.includes).count
-                    Label(filter.title, systemImage: filter.symbol)
-                        .badge(filter == .all ? 0 : count)
-                        .tag(filter)
+                Section("Downloads") {
+                    ForEach(DownloadFilter.listFilters) { filter in
+                        let count = downloads.jobs.filter(filter.includes).count
+                        Label(filter.title, systemImage: filter.symbol)
+                            .badge(filter == .all ? 0 : count)
+                            .tag(filter)
+                    }
+                }
+                Section("Library") {
+                    Label(DownloadFilter.history.title, systemImage: DownloadFilter.history.symbol)
+                        .tag(DownloadFilter.history)
                 }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 260)
         } detail: {
             VStack(spacing: 0) {
-                list
+                if window.filter == .history { HistoryView() } else { list }
                 Divider()
                 footer
             }
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Clear finished", systemImage: "trash") { downloads.removeFinished() }
-                    .help("Remove completed, failed and cancelled downloads from the list. Files stay where they are.")
-                    .disabled(!downloads.jobs.contains(where: \.isFinished))
+                if window.filter == .history {
+                    Button("Clear history", systemImage: "trash") { window.isConfirmingClearHistory = true }
+                        .help("Remove every entry from History. Files stay where they are.")
+                        .disabled(library.history.isEmpty)
+                } else {
+                    Button("Clear finished", systemImage: "trash") { downloads.removeFinished() }
+                        .help("Remove completed, failed and cancelled downloads from the list. Files stay where they are.")
+                        .disabled(!downloads.jobs.contains(where: \.isFinished))
+                }
                 Button("Add download", systemImage: "plus") { addDownload.present(ytDlp: tools.downloadTools?.ytDlp) }
                     .help("Add a download (⌘N)")
             }
@@ -45,7 +58,7 @@ struct MainView: View {
         }
         .onChange(of: downloads.jobs.first?.id) {
             // A new download should be visible, whichever filter is selected.
-            if window.filter == .completed || window.filter == .failed { window.filter = .all }
+            if [.completed, .failed, .history].contains(window.filter) { window.filter = .all }
         }
     }
 
@@ -80,6 +93,9 @@ struct MainView: View {
                 Text("· Optional: \(command)").textSelection(.enabled)
             }
             Spacer()
+            if let error = library.saveError {
+                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+            }
             Text(activitySummary)
         }
         .font(.caption)

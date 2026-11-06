@@ -15,6 +15,17 @@ public struct DownloadProgress: Sendable, Equatable {
     /// Where yt-dlp is writing, e.g. the video or the audio part of a merged download.
     public var filename: String?
 
+    public init(downloadedBytes: Int64, totalBytes: Int64? = nil, speed: Double? = nil, eta: Double? = nil,
+                fragmentIndex: Int? = nil, fragmentCount: Int? = nil, filename: String? = nil) {
+        self.downloadedBytes = downloadedBytes
+        self.totalBytes = totalBytes
+        self.speed = speed
+        self.eta = eta
+        self.fragmentIndex = fragmentIndex
+        self.fragmentCount = fragmentCount
+        self.filename = filename
+    }
+
     /// 0...1, or nil when the size is unknown.
     public var fraction: Double? {
         if let total = totalBytes, total > 0 { return min(1, Double(downloadedBytes) / Double(total)) }

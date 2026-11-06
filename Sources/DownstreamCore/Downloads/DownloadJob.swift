@@ -37,7 +37,7 @@ public final class DownloadJob: Identifiable {
     public let options: DownloadOptions
     public let context: DownloadContext
     public let ytDlp: URL
-    public let createdAt = Date()
+    public let createdAt: Date
     public var title: String
     public var thumbnailURL: URL?
 
@@ -69,6 +69,32 @@ public final class DownloadJob: Identifiable {
         self.ytDlp = ytDlp
         self.title = title ?? url.absoluteString
         self.thumbnailURL = thumbnailURL
+        self.createdAt = Date()
+    }
+
+    /// Brings back a download saved by `pendingSnapshot`, paused. Resuming continues from its partial files.
+    public init(restoring saved: PendingDownload, tools: DownloadTools) {
+        url = saved.url
+        options = saved.options
+        context = DownloadContext(url: saved.url, outputDirectory: saved.outputDirectory, ffmpeg: tools.ffmpeg, aria2c: tools.aria2c)
+        ytDlp = tools.ytDlp
+        title = saved.title
+        thumbnailURL = saved.thumbnailURL
+        createdAt = saved.createdAt
+        state = .paused
+        firstStarted = saved.startedAt
+        writtenFiles = Set(saved.writtenFiles)
+        lastProgress = saved.lastProgress.map { DownloadProgress(downloadedBytes: $0.downloadedBytes, totalBytes: $0.totalBytes) }
+    }
+
+    /// What to save so this download can be restored after a relaunch, or nil once it's finished.
+    public var pendingSnapshot: PendingDownload? {
+        guard !isFinished else { return nil }
+        return PendingDownload(
+            url: url, title: title, thumbnailURL: thumbnailURL, options: options,
+            outputDirectory: context.outputDirectory, createdAt: createdAt,
+            startedAt: firstStarted, writtenFiles: writtenFiles.sorted(),
+            lastProgress: lastProgress.map { .init(downloadedBytes: $0.downloadedBytes, totalBytes: $0.totalBytes) })
     }
 
     /// yt-dlp is running for this job.

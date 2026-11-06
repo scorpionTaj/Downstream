@@ -30,7 +30,19 @@ final class AddDownloadModel {
     var embedThumbnailAndMetadata = true
     var folder: URL = AppSettings.downloadFolder
 
+    /// The preset the choices came from, or nil for Downstream's defaults.
+    private(set) var presetID: UUID?
+    /// The preset's full options. Settings the sheet doesn't show (SponsorBlock, cookies…) come from here.
+    private var baseOptions = DownloadOptions()
+    var isNamingPreset = false
+    var newPresetName = ""
+
+    private let library: Library
     private var fetchTask: Task<Void, Never>?
+
+    init(library: Library) {
+        self.library = library
+    }
 
     /// Opens the sheet, starting from the link on the clipboard if there is one.
     func present(ytDlp: URL?) {
@@ -38,6 +50,7 @@ final class AddDownloadModel {
         phase = .idle
         urlText = ""
         folder = AppSettings.downloadFolder
+        applyPreset(id: AppSettings.defaultPresetID)
         isPresented = true
         if let text = NSPasteboard.general.string(forType: .string), let url = ArgumentBuilder.validURL(text) {
             urlText = url.absoluteString
@@ -82,9 +95,12 @@ final class AddDownloadModel {
         if case .ready(let info) = phase { info } else { nil }
     }
 
+    /// The heights on offer, plus the preset's own if this video doesn't list it
+    /// (yt-dlp then picks the nearest size, so it still works).
     var heightChoices: [Int] {
-        guard let info, !info.availableHeights.isEmpty else { return Self.standardHeights }
-        return info.availableHeights
+        let offered = info.map(heightChoices(for:)) ?? Self.standardHeights
+        guard let maxHeight, !offered.contains(maxHeight) else { return offered }
+        return (offered + [maxHeight]).sorted(by: >)
     }
 
     /// Uploaded subtitles first, then automatic captions.
@@ -109,7 +125,7 @@ final class AddDownloadModel {
     }
 
     func makeOptions() -> DownloadOptions {
-        var options = DownloadOptions()
+        var options = baseOptions
         options.kind = kind
         options.maxHeight = maxHeight
         options.container = container
@@ -117,6 +133,7 @@ final class AddDownloadModel {
         options.embedThumbnail = embedThumbnailAndMetadata
         options.embedMetadata = embedThumbnailAndMetadata
         options.downloadPlaylist = info?.isPlaylist ?? false
+        options.subtitles = nil
         if kind == .video, subtitlesEnabled, !subtitleLanguage.isEmpty {
             options.subtitles = SubtitleOptions(languages: [subtitleLanguage], includeAutomatic: isAutomatic(subtitleLanguage), embed: true)
         }
@@ -132,9 +149,75 @@ final class AddDownloadModel {
         isPresented = false
     }
 
+    // MARK: Presets
+
+    var presets: [Preset] { library.presets }
+
+    var isDefaultPreset: Bool { presetID != nil && presetID == AppSettings.defaultPresetID }
+
+    /// The choices differ from the selected preset's.
+    var isPresetEdited: Bool {
+        guard let preset = library.preset(id: presetID) else { return false }
+        return Self.comparable(makeOptions()) != Self.comparable(preset.options)
+    }
+
+    /// Fills the sheet from a preset, or from Downstream's defaults for nil.
+    func applyPreset(id: UUID?) {
+        let preset = library.preset(id: id)
+        presetID = preset?.id
+        baseOptions = preset?.options ?? DownloadOptions()
+        kind = baseOptions.kind
+        maxHeight = baseOptions.maxHeight
+        container = baseOptions.container
+        audioFormat = baseOptions.audioFormat
+        embedThumbnailAndMetadata = baseOptions.embedThumbnail && baseOptions.embedMetadata
+        subtitlesEnabled = baseOptions.subtitles != nil
+        if let language = baseOptions.subtitles?.languages.first { subtitleLanguage = language }
+        if let info { chooseSubtitleLanguage(for: info) }
+    }
+
+    func beginSavingPreset() {
+        newPresetName = library.preset(id: presetID)?.name ?? ""
+        isNamingPreset = true
+    }
+
+    /// Saves the current choices under `newPresetName`, replacing a preset with the same name.
+    func saveNamedPreset() {
+        let name = newPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let preset = library.savePreset(named: name, options: Self.comparable(makeOptions()))
+        presetID = preset.id
+        baseOptions = preset.options
+    }
+
+    func deleteSelectedPreset() {
+        guard let preset = library.preset(id: presetID) else { return }
+        if AppSettings.defaultPresetID == preset.id { AppSettings.defaultPresetID = nil }
+        library.deletePreset(preset)
+        presetID = nil
+        baseOptions = DownloadOptions()
+    }
+
+    func setDefaultPreset(_ isDefault: Bool) {
+        AppSettings.defaultPresetID = isDefault ? presetID : nil
+    }
+
+    /// Presets don't remember whether one particular link was a playlist.
+    private static func comparable(_ options: DownloadOptions) -> DownloadOptions {
+        var options = options
+        options.downloadPlaylist = false
+        options.playlistItems = nil
+        return options
+    }
+
     private func applyDefaults(for info: MediaInfo) {
-        if let height = maxHeight, !heightChoices(for: info).contains(height) { maxHeight = nil }
+        chooseSubtitleLanguage(for: info)
+    }
+
+    /// Keeps the preset's language if this video has it, else picks the system language, then English.
+    private func chooseSubtitleLanguage(for info: MediaInfo) {
         let languages = info.subtitleLanguages + info.automaticCaptionLanguages
+        if languages.contains(subtitleLanguage) { return }
         let preferred = Locale.preferredLanguages.compactMap { Locale(identifier: $0).language.languageCode?.identifier }
         subtitleLanguage = preferred.first(where: languages.contains) ?? (languages.contains("en") ? "en" : languages.first ?? "")
     }

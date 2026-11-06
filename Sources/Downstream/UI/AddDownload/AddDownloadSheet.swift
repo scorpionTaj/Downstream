@@ -67,7 +67,15 @@ struct AddDownloadSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: 560)
+        .alert("Save preset", isPresented: $model.isNamingPreset) {
+            TextField("Name", text: $model.newPresetName)
+            Button("Save") { model.saveNamedPreset() }
+                .disabled(model.newPresetName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Saves these choices so you can use them again. A preset with the same name is replaced.")
+        }
     }
 
     private func fetch() {
@@ -80,7 +88,37 @@ struct AddDownloadSheet: View {
 
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
             GridRow {
-                Text("Type").gridColumnAlignment(.trailing)
+                Text("Preset").gridColumnAlignment(.trailing)
+                HStack(spacing: 8) {
+                    Picker("Preset", selection: Binding(get: { model.presetID }, set: { model.applyPreset(id: $0) })) {
+                        Text("Default settings").tag(UUID?.none)
+                        if !model.presets.isEmpty { Divider() }
+                        ForEach(model.presets) { Text($0.name).tag(UUID?.some($0.id)) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    if model.isPresetEdited {
+                        Text("Edited").font(.caption).foregroundStyle(.secondary).fixedSize()
+                    }
+                    Button("Save as preset…") { model.beginSavingPreset() }
+                        .fixedSize()
+                    if model.presetID != nil {
+                        Button("Delete preset", systemImage: "trash") { model.deleteSelectedPreset() }
+                            .labelStyle(.iconOnly)
+                            .help("Delete this preset")
+                    }
+                }
+            }
+            if model.presetID != nil {
+                GridRow {
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    Toggle("Use this preset for new downloads",
+                           isOn: Binding(get: { model.isDefaultPreset }, set: { model.setDefaultPreset($0) }))
+                        .fixedSize()
+                }
+            }
+            GridRow {
+                Text("Type")
                 Picker("Type", selection: $model.kind) {
                     Text("Video").tag(DownloadOptions.Kind.video)
                     Text("Audio only").tag(DownloadOptions.Kind.audio)

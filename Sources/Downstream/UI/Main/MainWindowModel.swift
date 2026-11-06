@@ -1,9 +1,12 @@
 import DownstreamCore
 import Observation
 
-/// The sidebar's filters. History arrives in milestone 5.
+/// The sidebar's items: filters over the download list, then History.
 enum DownloadFilter: String, CaseIterable, Identifiable {
-    case all, downloading, queued, completed, failed
+    case all, downloading, queued, completed, failed, history
+
+    /// The filters over the current download list (everything but History).
+    static let listFilters: [DownloadFilter] = [.all, .downloading, .queued, .completed, .failed]
 
     var id: Self { self }
 
@@ -14,6 +17,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
         case .queued: "Queued"
         case .completed: "Completed"
         case .failed: "Failed"
+        case .history: "History"
         }
     }
 
@@ -24,6 +28,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
         case .queued: "clock"
         case .completed: "checkmark.circle"
         case .failed: "exclamationmark.triangle"
+        case .history: "clock.arrow.circlepath"
         }
     }
 
@@ -35,6 +40,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
         case .queued: "Nothing queued or paused"
         case .completed: "No completed downloads"
         case .failed: "No failed or cancelled downloads"
+        case .history: "No history yet"
         }
     }
 
@@ -46,6 +52,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
         case .queued: job.state == .queued || job.state == .paused
         case .completed: if case .completed = job.state { true } else { false }
         case .failed: job.state == .cancelled || { if case .failed = job.state { true } else { false } }()
+        case .history: false
         }
     }
 }
@@ -57,4 +64,6 @@ final class MainWindowModel {
     var filter: DownloadFilter = .all
     /// The job whose log sheet is open.
     var logJob: DownloadJob?
+    var historySearch = ""
+    var isConfirmingClearHistory = false
 }
