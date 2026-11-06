@@ -27,10 +27,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         downloads.onQueueChanged = { [weak self] in self?.savePending() }
         tools.onRefresh = { [weak self] in self?.restorePendingOnce() }
         settings.onMaxConcurrentChanged = { [weak self] in self?.downloads.maxConcurrent = $0 }
+        settings.onDockIconChanged = { hidden in Self.applyDockIcon(hidden: hidden) }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // With its window closed and in the background, macOS may otherwise quit Downstream on its own
+        // ("automatic termination"), stopping downloads and the menu bar item. Sudden termination (at logout)
+        // would skip saving unfinished downloads.
+        ProcessInfo.processInfo.disableAutomaticTermination("Downstream keeps running in the menu bar")
+        ProcessInfo.processInfo.disableSuddenTermination()
+        Self.applyDockIcon(hidden: AppSettings.hideDockIcon)
         Task { await tools.refresh() }
+    }
+
+    /// Downloads keep running with the window closed; the menu bar or the Dock brings it back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// `.accessory` removes the Dock icon and the app menu; `.regular` is a normal app.
+    /// A bare `swift run` executable needs `.regular` to show a window at all.
+    static func applyDockIcon(hidden: Bool) {
+        NSApp.setActivationPolicy(hidden ? .accessory : .regular)
+        if !hidden { NSApp.activate() }
     }
 
     /// Unfinished downloads would stop, so ask first.

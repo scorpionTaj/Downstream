@@ -46,9 +46,15 @@ private struct GeneralSettings: View {
                 LabeledContent("Downloads at the same time", value: "\(settings.maxConcurrent)")
             }
             Toggle("Notify when a download finishes while Downstream is in the background", isOn: $settings.notificationsEnabled)
+            Toggle("Show Downstream in the menu bar", isOn: $settings.showInMenuBar)
+            Toggle(isOn: $settings.hideDockIcon) {
+                Text("Hide the Dock icon")
+                Text("Downstream then lives in the menu bar only. Open the window from there.")
+            }
+            .disabled(!settings.showInMenuBar)
         }
         .formStyle(.grouped)
-        .frame(height: 220)
+        .frame(height: 320)
     }
 }
 

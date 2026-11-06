@@ -7,14 +7,12 @@ struct DownstreamApp: App {
     // `@State` needs a macro plugin that isn't in the Command Line Tools, so the app-wide
     // models live on the app delegate, which SwiftUI creates once.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var app
-
-    init() {
-        // Needed when launched as a bare executable (`swift run Downstream`), and harmless inside the .app.
-        NSApplication.shared.setActivationPolicy(.regular)
-    }
+    @AppStorage(AppSettings.showMenuBarKey) private var showInMenuBar = true
 
     var body: some Scene {
-        WindowGroup("Downstream") {
+        // A `WindowGroup`, not a single `Window`: SwiftUI quits the app when its only `Window` closes, which would
+        // stop downloads. The menu bar's "Open Downstream" reuses the open window rather than adding another.
+        WindowGroup("Downstream", id: "main") {
             RootView()
                 .environment(app.tools)
                 .environment(app.downloads)
@@ -24,6 +22,8 @@ struct DownstreamApp: App {
                 .environment(app.settings)
         }
         .windowResizability(.contentMinSize)
+        // Always open the window at launch, even if it was closed when the app last quit.
+        .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Add Download…") { app.addDownload.present(ytDlp: app.tools.downloadTools?.ytDlp) }
@@ -37,6 +37,18 @@ struct DownstreamApp: App {
                 .environment(app.settings)
                 .environment(app.tools)
         }
+
+        MenuBarExtra(isInserted: $showInMenuBar) {
+            MenuBarView()
+                .environment(app.tools)
+                .environment(app.downloads)
+                .environment(app.addDownload)
+                .environment(app.window)
+        } label: {
+            Image(systemName: app.downloads.runningCount > 0 ? "arrow.down.circle.fill" : "arrow.down.circle")
+                .accessibilityLabel("Downstream")
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 

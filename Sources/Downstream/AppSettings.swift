@@ -58,6 +58,21 @@ enum AppSettings {
         UserDefaults.standard.set(value, forKey: notificationsKey)
     }
 
+    /// Shared with `@AppStorage` in the app's scene list, which shows or hides the menu bar item.
+    static let showMenuBarKey = "showMenuBar"
+    static let hideDockIconKey = "hideDockIcon"
+
+    static var showInMenuBar: Bool {
+        get { UserDefaults.standard.object(forKey: showMenuBarKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: showMenuBarKey) }
+    }
+
+    /// Menu-bar-only mode. Only honoured while the menu bar item is shown, so the app can't become unreachable.
+    static var hideDockIcon: Bool {
+        get { showInMenuBar && UserDefaults.standard.bool(forKey: hideDockIconKey) }
+        set { UserDefaults.standard.set(newValue, forKey: hideDockIconKey) }
+    }
+
     /// The preset applied when the Add Download sheet opens. nil means Downstream's defaults.
     static var defaultPresetID: UUID? {
         get { UserDefaults.standard.string(forKey: "defaultPresetID").flatMap(UUID.init(uuidString:)) }

@@ -66,4 +66,6 @@ final class MainWindowModel {
     var logJob: DownloadJob?
     var historySearch = ""
     var isConfirmingClearHistory = false
+    /// Why the menu bar's quick download didn't start, until the menu is opened again.
+    var menuBarMessage: String?
 }

@@ -22,6 +22,22 @@ final class SettingsModel {
 
     var toolPaths: [Tool: String] { didSet { AppSettings.toolOverrides = toolPaths } }
 
+    var showInMenuBar: Bool {
+        didSet {
+            AppSettings.showInMenuBar = showInMenuBar
+            if !showInMenuBar && hideDockIcon { hideDockIcon = false }  // keep the app reachable
+        }
+    }
+
+    var hideDockIcon: Bool {
+        didSet {
+            AppSettings.hideDockIcon = hideDockIcon
+            onDockIconChanged?(AppSettings.hideDockIcon)
+        }
+    }
+
+    var onDockIconChanged: ((Bool) -> Void)?
+
     var onMaxConcurrentChanged: ((Int) -> Void)?
 
     init() {
@@ -30,6 +46,8 @@ final class SettingsModel {
         notificationsEnabled = AppSettings.notificationsEnabled
         defaultOptions = AppSettings.defaultOptions
         toolPaths = AppSettings.toolOverrides
+        showInMenuBar = AppSettings.showInMenuBar
+        hideDockIcon = AppSettings.hideDockIcon
     }
 
     /// Picks up values changed elsewhere (the Add Download sheet remembers the last folder).

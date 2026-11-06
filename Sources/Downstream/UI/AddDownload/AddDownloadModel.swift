@@ -163,6 +163,31 @@ final class AddDownloadModel {
         isPresented = false
     }
 
+    // MARK: Quick download (menu bar)
+
+    /// The link on the clipboard, if it's one Downstream can download.
+    static var clipboardLink: URL? {
+        NSPasteboard.general.string(forType: .string).flatMap(ArgumentBuilder.validURL)
+    }
+
+    /// Downloads the clipboard's link straight away with the default preset (or the default settings),
+    /// into the usual folder. The title and thumbnail fill in once yt-dlp has looked the link up.
+    /// Returns why it couldn't, or nil when the download was added.
+    @discardableResult
+    func downloadClipboardLink(in manager: DownloadManager, tools: DownloadTools) -> String? {
+        guard let url = Self.clipboardLink else { return "Copy a link first." }
+        let options = library.preset(id: AppSettings.defaultPresetID)?.options ?? AppSettings.defaultOptions
+        if let problem = ArgumentBuilder.problem(with: options) { return problem.description }
+        let job = manager.add(url: url, options: options, title: nil, thumbnailURL: nil,
+                              outputDirectory: AppSettings.downloadFolder, tools: tools)
+        Task {
+            guard let info = try? await MetadataFetcher(ytDlp: tools.ytDlp).fetch(url, cookies: options.cookies) else { return }
+            if let title = info.title { job.title = title }
+            job.thumbnailURL = info.thumbnail.flatMap(URL.init(string:))
+        }
+        return nil
+    }
+
     // MARK: Presets
 
     var presets: [Preset] { library.presets }
