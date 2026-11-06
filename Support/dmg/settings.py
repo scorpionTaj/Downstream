@@ -28,7 +28,7 @@ show_sidebar = False
 show_icon_preview = False
 
 icon_size = 120
-hide_extensions = [appname]
+# No hide_extensions: it sets a Finder flag on the app that `codesign --verify --strict` rejects as "detritus".
 text_size = 13
 arrange_by = None
 icon_locations = {

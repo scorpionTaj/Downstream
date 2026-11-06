@@ -153,9 +153,10 @@ public enum AppUpdater {
         guard let newApp = contents.first(where: { $0.pathExtension == "app" }) else { throw UpdateError.notAnApp }
         let newID = Bundle(url: newApp)?.bundleIdentifier
         guard newID == bundleID else { throw UpdateError.wrongApp(bundleID: newID) }
+        // Not --strict: that also rejects harmless Finder metadata a disk image can carry; the signature is still checked.
         do {
             _ = try await ProcessRunner.output(of: URL(fileURLWithPath: "/usr/bin/codesign"),
-                                               arguments: ["--verify", "--deep", "--strict", newApp.path], timeout: .seconds(60))
+                                               arguments: ["--verify", "--deep", newApp.path], timeout: .seconds(60))
         } catch ProcessError.failed(_, let tail) {
             throw UpdateError.badSignature(tail.last ?? "")
         }

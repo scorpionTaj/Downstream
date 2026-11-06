@@ -132,4 +132,35 @@ func liveChecks() async {
         let after = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.filter { $0.hasPrefix("jobcancel") } ?? []
         expectEqual(after, [])
     }
+
+    await suite("live: update a 1.0.0 copy from the latest GitHub release") {
+        let release = try await AppUpdater.latestRelease()
+        print("  · latest release \(release.tagName), \(release.diskImage?.name ?? "no dmg")")
+        expect(AppUpdater.isUpdate(release, over: "1.0.0"), "the latest release is newer than 1.0.0")
+        guard let asset = release.diskImage, let checksum = release.checksum else { expect(false, "release has a dmg and checksum"); return }
+
+        // A scratch "installed" copy that says it's 1.0.0.
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("downstream-live-update-\(UUID().uuidString)")
+        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: work) }
+        let installed = work.appendingPathComponent("Downstream.app")
+        try fm.createDirectory(at: installed.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        let plist: [String: Any] = ["CFBundleIdentifier": "com.scorpiontaj.downstream", "CFBundleShortVersionString": "1.0.0"]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            .write(to: installed.appendingPathComponent("Contents/Info.plist"))
+
+        let (dmgData, _) = try await URLSession.shared.data(from: asset.downloadURL)
+        let dmg = work.appendingPathComponent(asset.name)
+        try dmgData.write(to: dmg)
+        let (sumData, _) = try await URLSession.shared.data(from: checksum.downloadURL)
+        try AppUpdater.verify(dmg, checksumFileContents: String(decoding: sumData, as: UTF8.self))
+
+        try await AppUpdater.install(from: dmg, replacing: installed, bundleID: "com.scorpiontaj.downstream", trashOldVersion: false)
+        let version = NSDictionary(contentsOf: installed.appendingPathComponent("Contents/Info.plist"))?["CFBundleShortVersionString"] as? String
+        expectEqual(version, release.version?.description)
+        let verify = try? await ProcessRunner.output(of: URL(fileURLWithPath: "/usr/bin/codesign"),
+                                                     arguments: ["--verify", "--deep", installed.path])
+        expect(verify != nil, "installed copy has a valid signature")
+    }
 }
