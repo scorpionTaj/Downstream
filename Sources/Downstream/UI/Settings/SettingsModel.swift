@@ -38,6 +38,9 @@ final class SettingsModel {
 
     var onDockIconChanged: ((Bool) -> Void)?
 
+    var autoUpdateYtDlp: Bool { didSet { AppSettings.autoUpdateYtDlp = autoUpdateYtDlp } }
+    var checkForAppUpdates: Bool { didSet { AppSettings.checkForAppUpdates = checkForAppUpdates } }
+
     var onMaxConcurrentChanged: ((Int) -> Void)?
 
     init() {
@@ -48,6 +51,8 @@ final class SettingsModel {
         toolPaths = AppSettings.toolOverrides
         showInMenuBar = AppSettings.showInMenuBar
         hideDockIcon = AppSettings.hideDockIcon
+        autoUpdateYtDlp = AppSettings.autoUpdateYtDlp
+        checkForAppUpdates = AppSettings.checkForAppUpdates
     }
 
     /// Picks up values changed elsewhere (the Add Download sheet remembers the last folder).

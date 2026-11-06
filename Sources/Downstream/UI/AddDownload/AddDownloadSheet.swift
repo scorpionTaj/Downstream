@@ -10,7 +10,13 @@ struct AddDownloadSheet: View {
         @Bindable var model = model
 
         VStack(alignment: .leading, spacing: 16) {
-            Text("Add download").font(.title3.weight(.semibold))
+            HStack(spacing: 12) {
+                IconTile(symbol: "arrow.down", size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Add download").font(.title2.weight(.bold))
+                    Text("Video or audio from any site yt-dlp supports").font(.callout).foregroundStyle(.secondary)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Link").foregroundStyle(.secondary)
@@ -82,7 +88,8 @@ struct AddDownloadSheet: View {
                     if let downloadTools = tools.downloadTools { model.start(in: downloads, tools: downloadTools) }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(SunsetButtonStyle())
+                .opacity(model.downloadBlocker != nil || tools.downloadTools == nil ? 0.5 : 1)
                 .disabled(model.downloadBlocker != nil || tools.downloadTools == nil)
             }
         }
@@ -210,9 +217,9 @@ struct MediaPreview: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Thumbnail(url: info.thumbnail.flatMap(URL.init(string:)), width: 96)
+            Thumbnail(url: info.thumbnail.flatMap(URL.init(string:)), width: 120)
             VStack(alignment: .leading, spacing: 3) {
-                Text(info.title ?? "Untitled")
+                Text(info.title ?? String(localized: "Untitled"))
                     .font(.headline)
                     .lineLimit(2)
                 Text(details)
@@ -222,7 +229,8 @@ struct MediaPreview: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.backdrop, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.pink.opacity(0.25)))
         .accessibilityElement(children: .combine)
     }
 
@@ -230,9 +238,9 @@ struct MediaPreview: View {
         var parts: [String] = []
         if let uploader = info.uploader { parts.append(uploader) }
         if let entries = info.entries {
-            parts.append("Playlist · \(entries.count) \(entries.count == 1 ? "video" : "videos")")
+            parts.append(String(localized: "Playlist · \(entries.count) videos"))
         } else if info.isLive {
-            parts.append("Live")
+            parts.append(String(localized: "Live"))
         } else if let duration = info.duration {
             parts.append(DownloadFormatting.duration(duration))
         }
@@ -249,11 +257,14 @@ struct Thumbnail: View {
         AsyncImage(url: url) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } placeholder: {
-            Image(systemName: "film").foregroundStyle(.tertiary)
+            Image(systemName: "play.rectangle.fill")
+                .font(.system(size: width * 0.22))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.sunsetDiagonal.opacity(0.75))
         }
         .frame(width: width, height: width * 9 / 16)
-        .background(.quaternary.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .clipShape(RoundedRectangle(cornerRadius: width > 80 ? 10 : 6, style: .continuous))
         .accessibilityHidden(true)
     }
 }

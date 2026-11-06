@@ -54,9 +54,13 @@ func libraryChecks() async {
         }
         let failed = DownloadJob(url: context.url, options: DownloadOptions(), context: context, ytDlp: sh, title: "bad")
         await failed.run(starter: script("exit 1"))
-        library.record(failed)   // ignored: only completed downloads go into history
-        expectEqual(library.history.map(\.title), ["second", "first"])
-        expectEqual(library.history.first?.file.path, "/tmp/second.mp4")
+        library.record(failed)
+        expectEqual(library.history.map(\.title), ["bad", "second", "first"])
+        expectEqual(library.history.first?.failure, "yt-dlp failed without saying why.")
+        expectEqual(library.history.first?.file, nil)
+        library.removeHistory(library.history[0])
+        expectEqual(library.history.first?.file?.path, "/tmp/second.mp4")
+        expect(library.history.allSatisfy { !$0.isFailed }, "completed entries aren't failed")
 
         let reopened = Library(directory: folder)
         expectEqual(reopened.history, library.history)

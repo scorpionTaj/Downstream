@@ -1,0 +1,67 @@
+name: Release
+
+# Push a tag like v1.2.0 to build the DMG and publish a GitHub release.
+# Running it by hand (Actions › Release › Run workflow) builds the DMG as an artifact without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Support/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" Support/Info.plist
+          echo "Building Downstream $VERSION ($GITHUB_RUN_NUMBER)"
+
+      - name: Install dmgbuild
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet dmgbuild==1.6.7
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Checks
+        run: swift run DownstreamChecks
+
+      - name: Build the DMG
+        run: scripts/release.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Downstream-${{ env.VERSION }}
+          path: |
+            build/Downstream-${{ env.VERSION }}.dmg
+            build/Downstream-${{ env.VERSION }}.dmg.sha256
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          ### Install
+          1. Download **Downstream-$VERSION.dmg** below, open it and drag Downstream into Applications.
+          2. The first time, right-click Downstream › **Open** (the app isn't notarized yet).
+          3. Downstream needs Homebrew's tools: \`brew install yt-dlp ffmpeg aria2\`. It tells you if any are missing.
+
+          Already using Downstream? It offers this update itself (Downstream › Check for Updates…).
+
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            "build/Downstream-$VERSION.dmg" "build/Downstream-$VERSION.dmg.sha256" \
+            --title "Downstream $VERSION" --notes-file notes.md --generate-notes --verify-tag

@@ -25,11 +25,11 @@ public enum ArgumentError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .invalidURL: "Enter a web address that starts with http:// or https://."
-        case .invalidPlaylistItems(let items): "“\(items)” isn't a valid item list. Use numbers, ranges and commas, like 1:5,8."
-        case .invalidFilenameTemplate(let template): "“\(template)” must be a file name inside the download folder."
-        case .outOfRange(let setting, let allowed): "\(setting) must be between \(allowed.lowerBound) and \(allowed.upperBound)."
-        case .unbalancedQuote: "The extra arguments have a quote that isn't closed."
+        case .invalidURL: String(localized: "Enter a web address that starts with http:// or https://.")
+        case .invalidPlaylistItems(let items): String(localized: "“\(items)” isn't a valid item list. Use numbers, ranges and commas, like 1:5,8.")
+        case .invalidFilenameTemplate(let template): String(localized: "“\(template)” must be a file name inside the download folder.")
+        case .outOfRange(let setting, let allowed): String(localized: "\(setting) must be between \(allowed.lowerBound) and \(allowed.upperBound).")
+        case .unbalancedQuote: String(localized: "The extra arguments have a quote that isn't closed.")
         }
     }
 }
@@ -186,16 +186,16 @@ public enum ArgumentBuilder {
 
     static func validate(_ options: DownloadOptions) throws {
         if !(0...10).contains(options.audioQuality) {
-            throw ArgumentError.outOfRange(setting: "Audio quality", allowed: 0...10)
+            throw ArgumentError.outOfRange(setting: String(localized: "Audio quality"), allowed: 0...10)
         }
         if let connections = options.aria2Connections, !(1...16).contains(connections) {
-            throw ArgumentError.outOfRange(setting: "aria2 connections", allowed: 1...16)
+            throw ArgumentError.outOfRange(setting: String(localized: "aria2 connections"), allowed: 1...16)
         }
         if let rate = options.rateLimitKiB, rate < 1 {
-            throw ArgumentError.outOfRange(setting: "Speed limit", allowed: 1...Int.max)
+            throw ArgumentError.outOfRange(setting: String(localized: "Speed limit"), allowed: 1...Int.max)
         }
         if let height = options.maxHeight, height < 1 {
-            throw ArgumentError.outOfRange(setting: "Maximum height", allowed: 1...Int.max)
+            throw ArgumentError.outOfRange(setting: String(localized: "Maximum height"), allowed: 1...Int.max)
         }
         if let items = options.playlistItems, !items.isEmpty {
             let allowed = CharacterSet(charactersIn: "0123456789:,-")

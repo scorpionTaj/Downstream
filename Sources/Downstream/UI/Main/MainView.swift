@@ -7,33 +7,23 @@ struct MainView: View {
     @Environment(ToolSetupModel.self) private var tools
     @Environment(MainWindowModel.self) private var window
     @Environment(Library.self) private var library
+    @Environment(AppUpdateModel.self) private var updates
 
     var body: some View {
         @Bindable var addDownload = addDownload
         @Bindable var window = window
+        @Bindable var updates = updates
 
         NavigationSplitView {
-            List(selection: Binding(get: { window.filter }, set: { window.filter = $0 ?? .all })) {
-                Section("Downloads") {
-                    ForEach(DownloadFilter.listFilters) { filter in
-                        let count = downloads.jobs.filter(filter.includes).count
-                        Label(filter.title, systemImage: filter.symbol)
-                            .badge(filter == .all ? 0 : count)
-                            .tag(filter)
-                    }
-                }
-                Section("Library") {
-                    Label(DownloadFilter.history.title, systemImage: DownloadFilter.history.symbol)
-                        .tag(DownloadFilter.history)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 260)
+            sidebar
+                .navigationSplitViewColumnWidth(min: 245, ideal: 255, max: 320)
         } detail: {
             VStack(spacing: 0) {
+                header
                 if window.filter == .history { HistoryView() } else { list }
-                Divider()
                 footer
             }
+            .background(Theme.backdrop)
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -46,77 +36,195 @@ struct MainView: View {
                         .help("Remove completed, failed and cancelled downloads from the list. Files stay where they are.")
                         .disabled(!downloads.jobs.contains(where: \.isFinished))
                 }
-                Button("Add download", systemImage: "plus") { addDownload.present(ytDlp: tools.downloadTools?.ytDlp) }
-                    .help("Add a download (⌘N)")
             }
         }
-        .sheet(isPresented: $addDownload.isPresented) {
-            AddDownloadSheet()
-        }
-        .sheet(item: $window.logJob) { job in
-            LogSheet(job: job)
-        }
+        .sheet(isPresented: $addDownload.isPresented) { AddDownloadSheet() }
+        .sheet(item: $window.logJob) { LogSheet(job: $0) }
+        .sheet(isPresented: $updates.isPresented) { UpdateView() }
         .onChange(of: downloads.jobs.first?.id) {
             // A new download should be visible, whichever filter is selected.
             if [.completed, .failed, .history].contains(window.filter) { window.filter = .all }
         }
     }
 
+    // MARK: Sidebar
+
+    private var sidebar: some View {
+        List(selection: Binding(get: { window.filter }, set: { window.filter = $0 ?? .all })) {
+            Section("Downloads") {
+                ForEach(DownloadFilter.listFilters) { filter in
+                    sidebarRow(filter, count: filter == .all ? nil : downloads.jobs.filter(filter.includes).count)
+                }
+            }
+            Section("Library") {
+                sidebarRow(.history, count: nil)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if updates.isUpdateAvailable {
+                Button { updates.isPresented = true } label: {
+                    Label("Update available", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SunsetButtonStyle())
+                .padding(12)
+            }
+        }
+    }
+
+    private func sidebarRow(_ filter: DownloadFilter, count: Int?) -> some View {
+        HStack(spacing: 10) {
+            IconTile(symbol: filter.symbol, fill: filter.tileFill, size: 24)
+            Text(filter.title)
+            Spacer()
+            if let count, count > 0 {
+                Text("\(count)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 1)
+                    .background(filter.color.opacity(0.18), in: Capsule())
+                    .foregroundStyle(filter.color)
+            }
+        }
+        .padding(.vertical, 3)
+        .tag(filter)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            IconTile(symbol: window.filter.symbol, fill: window.filter.tileFill, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(window.filter.title).font(.title2.weight(.bold))
+                Text(headerSummary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer()
+            Button {
+                addDownload.present(ytDlp: tools.downloadTools?.ytDlp)
+            } label: {
+                Label("Add download", systemImage: "plus")
+            }
+            .buttonStyle(SunsetButtonStyle())
+            .keyboardShortcut("n")
+            .help("Add a download (⌘N)")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+    }
+
+    private var headerSummary: String {
+        if window.filter == .history {
+            let failed = library.history.filter(\.isFailed).count
+            return String(localized: "Remembered: \(library.history.count) · Failed: \(failed)")
+        }
+        var parts: [String] = []
+        if downloads.runningCount > 0 { parts.append(String(localized: "\(downloads.runningCount) downloading")) }
+        if downloads.queuedCount > 0 { parts.append(String(localized: "\(downloads.queuedCount) queued")) }
+        if downloads.pausedCount > 0 { parts.append(String(localized: "\(downloads.pausedCount) paused")) }
+        if downloads.totalSpeed > 0 { parts.append(DownloadFormatting.speed(downloads.totalSpeed)) }
+        return parts.isEmpty ? String(localized: "Nothing in progress") : parts.joined(separator: " · ")
+    }
+
+    // MARK: List
+
     @ViewBuilder
     private var list: some View {
         let visible = downloads.jobs.filter(window.filter.includes)
         if downloads.jobs.isEmpty {
-            ContentUnavailableView {
-                Label("No downloads yet", systemImage: "arrow.down.circle")
-            } description: {
-                Text("Paste a link from YouTube, Vimeo or hundreds of other sites.")
-            } actions: {
-                Button("Add download") { addDownload.present(ytDlp: tools.downloadTools?.ytDlp) }
-                    .buttonStyle(.borderedProminent)
+            EmptyStateView(symbol: "arrow.down", title: "Start your first download",
+                           message: "Paste a link from YouTube, Vimeo or hundreds of other sites.") {
+                Button { addDownload.present(ytDlp: tools.downloadTools?.ytDlp) } label: {
+                    Label("Add download", systemImage: "plus")
+                }
+                .buttonStyle(SunsetButtonStyle())
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if visible.isEmpty {
-            ContentUnavailableView(window.filter.emptyMessage, systemImage: window.filter.symbol)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView(symbol: window.filter.symbol, title: window.filter.emptyMessage, message: nil) { EmptyView() }
         } else {
-            List(visible) { job in
-                DownloadRow(job: job)
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(visible) { DownloadRow(job: $0) }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
             }
-            .listStyle(.inset)
         }
     }
 
     private var footer: some View {
-        HStack {
-            Text(versionSummary)
-            if let command = tools.report?.installCommand {
-                Text("· Optional: \(command)").textSelection(.enabled)
+        HStack(spacing: 6) {
+            ForEach(tools.report?.statuses.filter(\.isFound) ?? []) { status in
+                Text("\(status.tool.displayName) \(status.version ?? "?")")
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(.quaternary.opacity(0.6), in: Capsule())
+            }
+            if tools.isUpdating {
+                ProgressView().controlSize(.mini)
+                Text("Updating yt-dlp…")
             }
             Spacer()
             if let error = library.saveError {
-                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.red)
             }
-            Text(activitySummary)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+}
+
+extension DownloadFilter {
+    var color: Color {
+        switch self {
+        case .all: Theme.orange
+        case .downloading: Theme.pink
+        case .queued: Theme.amber
+        case .completed: Theme.green
+        case .failed: Theme.red
+        case .history: Theme.purple
+        }
     }
 
-    private var versionSummary: String {
-        (tools.report?.statuses ?? [])
-            .filter(\.isFound)
-            .map { "\($0.tool.displayName) \($0.version ?? "?")" }
-            .joined(separator: " · ")
+    var tileFill: AnyShapeStyle {
+        self == .all ? AnyShapeStyle(Theme.sunsetDiagonal) : AnyShapeStyle(color.gradient)
     }
+}
 
-    private var activitySummary: String {
-        var parts: [String] = []
-        if downloads.runningCount > 0 { parts.append("\(downloads.runningCount) active") }
-        if downloads.queuedCount > 0 { parts.append("\(downloads.queuedCount) queued") }
-        if downloads.totalSpeed > 0 { parts.append(DownloadFormatting.speed(downloads.totalSpeed)) }
-        return parts.joined(separator: " · ")
+/// A big friendly placeholder: gradient circle, title, message and an optional action.
+struct EmptyStateView<Actions: View>: View {
+    let symbol: String
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey?
+    @ViewBuilder let actions: Actions
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 84, height: 84)
+                .background(Theme.sunsetDiagonal, in: Circle())
+                .shadow(color: Theme.pink.opacity(0.35), radius: 14, y: 6)
+                .accessibilityHidden(true)
+            Text(title).font(.title3.weight(.semibold))
+            if let message {
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
+            }
+            actions
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(30)
     }
 }
 
@@ -127,20 +235,23 @@ struct LogSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(job.title).font(.headline).lineLimit(2)
+            HStack(spacing: 12) {
+                IconTile(symbol: "doc.text.magnifyingglass", fill: AnyShapeStyle(StatusStyle(job.state).color.gradient), size: 36)
+                Text(job.title).font(.headline).lineLimit(2)
+            }
             if case .failed(let message) = job.state {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.red)
                     .textSelection(.enabled)
             }
             ScrollView {
-                Text(job.log.isEmpty ? "yt-dlp didn't print anything." : job.log.joined(separator: "\n"))
+                Text(job.log.isEmpty ? String(localized: "yt-dlp didn't print anything.") : job.log.joined(separator: "\n"))
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                    .padding(10)
             }
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
             HStack {
                 Text(job.url.absoluteString)
                     .font(.caption)
@@ -151,10 +262,11 @@ struct LogSheet: View {
                 Spacer()
                 Button("Copy log") { DownloadRow.copy(job.log.joined(separator: "\n")) }
                 Button("Close") { dismiss() }
+                    .buttonStyle(SunsetButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
-        .frame(width: 620, height: 420)
+        .padding(22)
+        .frame(width: 640, height: 440)
     }
 }

@@ -67,7 +67,7 @@ struct AdvancedOptionsView: View {
         SponsorBlockOptions.Category.allCases.firstIndex(of: category) ?? 0
     }
 
-    private static func name(_ category: SponsorBlockOptions.Category) -> String {
+    private static func name(_ category: SponsorBlockOptions.Category) -> LocalizedStringKey {
         switch category {
         case .sponsor: "Sponsors"
         case .intro: "Intros"
@@ -180,11 +180,11 @@ struct AdvancedOptionsView: View {
     private var cookieNote: String? {
         switch options.cookies {
         case nil:
-            "Cookies let yt-dlp download what your browser can see while you're signed in, such as age-restricted or members-only videos."
+            String(localized: "Cookies let yt-dlp download what your browser can see while you're signed in, such as age-restricted or members-only videos.")
         case .browser(.safari):
-            "Reading Safari's cookies needs Full Disk Access for Downstream: System Settings › Privacy & Security › Full Disk Access."
+            String(localized: "Reading Safari's cookies needs Full Disk Access for Downstream: System Settings › Privacy & Security › Full Disk Access.")
         case .browser:
-            "Your browser may ask for permission the first time."
+            String(localized: "Your browser may ask for permission the first time.")
         case .file(let path):
             (path as NSString).abbreviatingWithTildeInPath
         }
@@ -195,7 +195,7 @@ struct AdvancedOptionsView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a cookies.txt file in Netscape format"
+        panel.message = String(localized: "Choose a cookies.txt file in Netscape format")
         return panel.runModal() == .OK ? panel.url?.path : nil
     }
 
@@ -218,8 +218,8 @@ struct AdvancedOptionsView: View {
                     }
                 }
                 Text(aria2Available
-                     ? "Faster on some sites. The progress bar can't show a percentage while aria2 is downloading."
-                     : "Install aria2 with Homebrew to use this: brew install aria2")
+                     ? String(localized: "Faster on some sites. The progress bar can't show a percentage while aria2 is downloading.")
+                     : String(localized: "Install aria2 with Homebrew to use this: brew install aria2"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

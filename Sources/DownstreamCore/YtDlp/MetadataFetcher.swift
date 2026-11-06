@@ -9,7 +9,7 @@ public enum MetadataError: Error, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .ytDlpFailed(let message): message
-        case .unreadableOutput: "yt-dlp returned information Downstream couldn't read."
+        case .unreadableOutput: String(localized: "yt-dlp returned information Downstream couldn't read.")
         }
     }
 }
@@ -41,6 +41,6 @@ public struct MetadataFetcher: Sendable {
         if let line = stderrTail.last(where: { $0.hasPrefix("ERROR:") }) {
             return line.dropFirst("ERROR:".count).trimmingCharacters(in: .whitespaces)
         }
-        return stderrTail.last ?? "yt-dlp failed without saying why."
+        return stderrTail.last ?? String(localized: "yt-dlp failed without saying why.")
     }
 }

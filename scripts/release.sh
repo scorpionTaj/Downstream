@@ -14,17 +14,24 @@ set -euo pipefail
 
 root="${0:A:h:h}"
 cd "$root"
-version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)"
+# CI passes VERSION (from the git tag); locally the Info.plist version is used.
+version="${VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)}"
 dmg="$root/build/Downstream-$version.dmg"
 
 UNIVERSAL=1 "$root/scripts/bundle.sh" release
 
-staging="$(mktemp -d)"
-trap 'rm -rf "$staging"' EXIT
-cp -R build/Downstream.app "$staging/"
-ln -s /Applications "$staging/Applications"
 rm -f "$dmg"
-hdiutil create -volname "Downstream $version" -srcfolder "$staging" -fs HFS+ -format UDZO -quiet "$dmg"
+if command -v dmgbuild >/dev/null; then
+  # The designed installer window: background, icon positions, volume icon (Support/dmg/settings.py).
+  dmgbuild -s Support/dmg/settings.py -D app="$root/build/Downstream.app" "Downstream $version" "$dmg"
+else
+  echo "dmgbuild not found (pip install dmgbuild): making a plain disk image instead."
+  staging="$(mktemp -d)"
+  trap 'rm -rf "$staging"' EXIT
+  cp -R build/Downstream.app "$staging/"
+  ln -s /Applications "$staging/Applications"
+  hdiutil create -volname "Downstream $version" -srcfolder "$staging" -fs HFS+ -format UDZO -quiet "$dmg"
+fi
 
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
   codesign --force --timestamp --sign "$SIGN_IDENTITY" "$dmg"
@@ -39,5 +46,6 @@ else
   echo "Signed ad hoc (no SIGN_IDENTITY): first launch needs right-click › Open."
 fi
 
-shasum -a 256 "$dmg" | tee "$dmg.sha256"
+# File name only, so the checksum file doesn't carry this machine's path.
+(cd "$root/build" && shasum -a 256 "${dmg:t}" | tee "${dmg:t}.sha256")
 echo "Done: $dmg"

@@ -1,7 +1,7 @@
 // Draws Downstream's app icon and writes Support/AppIcon.icns.
 // Usage: swift scripts/make-icon.swift   (then commit Support/AppIcon.icns)
 //
-// Design: a rounded square in deep teal-to-blue, three flowing "stream" lines,
+// Design: a rounded square in a sunset gradient (orange, pink, purple), three flowing "stream" lines,
 // and a bold white arrow pointing down into them.
 import AppKit
 
@@ -21,8 +21,10 @@ func draw(size: Int) -> NSBitmapImageRep {
     // Body: Apple's grid keeps the shape 100pt in from each edge.
     let body = NSRect(x: 100 * s, y: 100 * s, width: 824 * s, height: 824 * s)
     let shape = NSBezierPath(roundedRect: body, xRadius: 185 * s, yRadius: 185 * s)
-    NSGradient(colors: [NSColor(srgbRed: 0.05, green: 0.55, blue: 0.62, alpha: 1),
-                        NSColor(srgbRed: 0.10, green: 0.28, blue: 0.70, alpha: 1)])!
+    // Sunset: orange at the top, through pink, to purple at the bottom.
+    NSGradient(colors: [NSColor(srgbRed: 1.00, green: 0.62, blue: 0.25, alpha: 1),
+                        NSColor(srgbRed: 0.96, green: 0.28, blue: 0.50, alpha: 1),
+                        NSColor(srgbRed: 0.50, green: 0.24, blue: 0.95, alpha: 1)])!
         .draw(in: shape, angle: -90)
 
     // Stream: three waves, fading towards the bottom.

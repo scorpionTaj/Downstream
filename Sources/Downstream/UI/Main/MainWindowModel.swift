@@ -1,5 +1,6 @@
 import DownstreamCore
 import Observation
+import SwiftUI
 
 /// The sidebar's items: filters over the download list, then History.
 enum DownloadFilter: String, CaseIterable, Identifiable {
@@ -10,7 +11,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
         case .all: "All downloads"
         case .downloading: "Downloading"
@@ -33,7 +34,7 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
     }
 
     /// What the list shows when this filter matches nothing.
-    var emptyMessage: String {
+    var emptyMessage: LocalizedStringKey {
         switch self {
         case .all: "No downloads"
         case .downloading: "Nothing downloading"
@@ -65,7 +66,12 @@ final class MainWindowModel {
     /// The job whose log sheet is open.
     var logJob: DownloadJob?
     var historySearch = ""
+    var historyFilter: HistoryFilter = .all
     var isConfirmingClearHistory = false
     /// Why the menu bar's quick download didn't start, until the menu is opened again.
     var menuBarMessage: String?
+}
+
+enum HistoryFilter: Hashable, CaseIterable {
+    case all, completed, failed
 }

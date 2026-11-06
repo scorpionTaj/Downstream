@@ -46,6 +46,11 @@ public final class DownloadManager {
     /// Called after anything that changes which downloads are unfinished, so they can be saved.
     public var onQueueChanged: (() -> Void)?
 
+    /// While true, queued downloads wait (e.g. while yt-dlp itself is being updated). Running ones carry on.
+    public var isHeld = false {
+        didSet { if !isHeld { schedule() } }
+    }
+
     private let starter: ProcessStarter
     /// Jobs handed to a run task. Tracked separately from `state`, which only changes once the task starts.
     private var started: Set<UUID> = []
@@ -133,17 +138,36 @@ public final class DownloadManager {
             outputDirectory: outputDirectory, tools: tools)
     }
 
+    public var pausedCount: Int { jobs.filter { $0.state == .paused }.count }
+    public var failedCount: Int { jobs.filter { if case .failed = $0.state { true } else { false } }.count }
+
+    public func resumeAll() {
+        for job in jobs where job.state == .paused { job.resume() }
+        schedule()
+        onQueueChanged?()
+    }
+
+    /// Retries every failed download (cancelled ones stay cancelled).
+    public func retryFailed() {
+        for job in jobs { if case .failed = job.state { job.retry() } }
+        schedule()
+        onQueueChanged?()
+    }
+
     /// Pauses everything, keeping partial files. Used when the app quits.
     public func pauseAll() {
         for job in jobs { job.pause() }
+        onQueueChanged?()
     }
 
     public func cancelAll() {
         for job in jobs { job.cancel() }
+        onQueueChanged?()
     }
 
     /// Starts the oldest queued jobs until `maxConcurrent` are running.
     private func schedule() {
+        guard !isHeld else { return }
         // `jobs` is newest first, so walk it backwards.
         for job in jobs.reversed() where started.count < maxConcurrent {
             guard job.state == .queued, !started.contains(job.id) else { continue }

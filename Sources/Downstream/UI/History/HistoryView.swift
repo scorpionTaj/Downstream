@@ -2,7 +2,7 @@ import AppKit
 import DownstreamCore
 import SwiftUI
 
-/// Completed downloads, kept across launches.
+/// Finished downloads, completed and failed, kept across launches.
 struct HistoryView: View {
     @Environment(Library.self) private var library
     @Environment(MainWindowModel.self) private var window
@@ -11,18 +11,33 @@ struct HistoryView: View {
         @Bindable var window = window
         let entries = filtered
 
-        Group {
+        VStack(spacing: 0) {
+            Picker("Show", selection: $window.historyFilter) {
+                Text("All").tag(HistoryFilter.all)
+                Text("Completed").tag(HistoryFilter.completed)
+                Text("Failed").tag(HistoryFilter.failed)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 320)
+            .padding(.bottom, 12)
+
             if library.history.isEmpty {
-                ContentUnavailableView("No history yet", systemImage: "clock.arrow.circlepath",
-                                       description: Text("Completed downloads appear here, even after you clear them from the list."))
+                EmptyStateView(symbol: "clock.arrow.circlepath", title: "No history yet",
+                               message: "Finished downloads appear here, even after you clear them from the list.") { EmptyView() }
             } else if entries.isEmpty {
                 ContentUnavailableView.search(text: window.historySearch)
+                    .frame(maxHeight: .infinity)
             } else {
-                List(entries) { HistoryRow(entry: $0) }
-                    .listStyle(.inset)
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(entries) { HistoryRow(entry: $0) }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .searchable(text: $window.historySearch, prompt: "Search history")
         .confirmationDialog("Clear all history?", isPresented: $window.isConfirmingClearHistory) {
             Button("Clear history", role: .destructive) { library.clearHistory() }
@@ -33,9 +48,15 @@ struct HistoryView: View {
 
     private var filtered: [HistoryEntry] {
         let query = window.historySearch.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return library.history }
-        return library.history.filter {
-            $0.title.localizedCaseInsensitiveContains(query) || $0.url.absoluteString.localizedCaseInsensitiveContains(query)
+        return library.history.filter { entry in
+            switch window.historyFilter {
+            case .all: break
+            case .completed: if entry.isFailed { return false }
+            case .failed: if !entry.isFailed { return false }
+            }
+            return query.isEmpty
+                || entry.title.localizedCaseInsensitiveContains(query)
+                || entry.url.absoluteString.localizedCaseInsensitiveContains(query)
         }
     }
 }
@@ -48,48 +69,58 @@ private struct HistoryRow: View {
     let entry: HistoryEntry
 
     var body: some View {
-        let exists = FileManager.default.fileExists(atPath: entry.file.path)
-        HStack(spacing: 12) {
-            Thumbnail(url: entry.thumbnailURL)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.title)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(details(fileExists: exists))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            HStack(spacing: 10) {
-                iconButton("Download again", "arrow.down.circle.fill", action: downloadAgain)
-                    .disabled(tools.downloadTools == nil)
-                if exists {
-                    iconButton("Show in Finder", "magnifyingglass.circle.fill") { DownloadRow.reveal(entry.file) }
+        let file = entry.file.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        let color = entry.isFailed ? Theme.red : Theme.green
+        HStack(spacing: 14) {
+            Thumbnail(url: entry.thumbnailURL, width: 88)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(entry.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    StatusChip(style: entry.isFailed ? StatusStyle(.failed("")) : StatusStyle(.completed(URL(fileURLWithPath: "/"))))
                 }
-                iconButton("Remove from history", "xmark") { library.removeHistory(entry) }
+                Text(details(file: file))
+                    .font(.callout)
+                    .foregroundStyle(entry.isFailed ? AnyShapeStyle(Theme.red) : AnyShapeStyle(.secondary))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            HStack(spacing: 8) {
+                circle(entry.isFailed ? "Try again" : "Download again", entry.isFailed ? "arrow.clockwise" : "arrow.down",
+                       Theme.orange, action: downloadAgain)
+                    .disabled(tools.downloadTools == nil)
+                if let file {
+                    circle("Show in Finder", "magnifyingglass", Theme.green) { DownloadRow.reveal(file) }
+                }
+                circle("Remove from history", "xmark", .gray) { library.removeHistory(entry) }
             }
         }
-        .padding(.vertical, 4)
+        .card(accent: color, padding: 12)
         .contextMenu {
-            if exists {
-                Button("Open") { NSWorkspace.shared.open(entry.file) }
-                Button("Show in Finder") { DownloadRow.reveal(entry.file) }
+            if let file {
+                Button("Open") { NSWorkspace.shared.open(file) }
+                Button("Show in Finder") { DownloadRow.reveal(file) }
                 Divider()
             }
-            Button("Download again", action: downloadAgain)
+            Button(entry.isFailed ? "Try again" : "Download again", action: downloadAgain)
             Button("Copy link") { DownloadRow.copy(entry.url.absoluteString) }
+            if let failure = entry.failure { Button("Copy error") { DownloadRow.copy(failure) } }
             Divider()
             Button("Remove from history") { library.removeHistory(entry) }
         }
     }
 
-    private func details(fileExists: Bool) -> String {
-        var parts = [entry.file.pathExtension.uppercased()]
+    private func details(file: URL?) -> String {
+        let date = entry.completedAt.formatted(date: .abbreviated, time: .shortened)
+        if let failure = entry.failure { return "\(date) · \(failure)" }
+        var parts: [String] = []
+        if let saved = entry.file { parts.append(saved.pathExtension.uppercased()) }
         if let size = entry.fileSize { parts.append(DownloadFormatting.bytes(size)) }
-        parts.append(entry.completedAt.formatted(date: .abbreviated, time: .shortened))
-        if !fileExists { parts.append("File moved or deleted") }
+        parts.append(date)
+        if file == nil { parts.append(String(localized: "File moved or deleted")) }
         return parts.joined(separator: " · ")
     }
 
@@ -99,10 +130,9 @@ private struct HistoryRow: View {
         window.filter = .all
     }
 
-    private func iconButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+    private func circle(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
         Button(title, systemImage: symbol, action: action)
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            .buttonStyle(CircleIconButtonStyle(color: color))
             .help(title)
     }
 }

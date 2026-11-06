@@ -22,6 +22,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/Downstream"
 cp Support/Info.plist "$app/Contents/Info.plist"
 cp Support/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+cp -R Support/*.lproj "$app/Contents/Resources/"
 plutil -lint -s "$app/Contents/Info.plist"
 
 # Hardened runtime is required for notarization. Downstream needs no entitlements:

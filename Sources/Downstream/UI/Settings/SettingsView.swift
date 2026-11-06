@@ -21,6 +21,7 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @Environment(SettingsModel.self) private var settings
+    @Environment(AppUpdateModel.self) private var updates
 
     var body: some View {
         @Bindable var settings = settings
@@ -37,7 +38,7 @@ private struct GeneralSettings: View {
                         panel.canChooseFiles = false
                         panel.canCreateDirectories = true
                         panel.directoryURL = settings.downloadFolder
-                        panel.prompt = "Choose"
+                        panel.prompt = String(localized: "Choose")
                         if panel.runModal() == .OK, let url = panel.url { settings.downloadFolder = url }
                     }
                 }
@@ -52,9 +53,16 @@ private struct GeneralSettings: View {
                 Text("Downstream then lives in the menu bar only. Open the window from there.")
             }
             .disabled(!settings.showInMenuBar)
+
+            Section("Updates") {
+                Toggle("Check for new versions of Downstream every day", isOn: $settings.checkForAppUpdates)
+                LabeledContent("Downstream \(updates.currentVersion)") {
+                    Button("Check now") { updates.checkNow() }
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(height: 320)
+        .frame(height: 430)
     }
 }
 
@@ -130,6 +138,7 @@ private struct ToolsSettings: View {
     @Environment(ToolSetupModel.self) private var tools
 
     var body: some View {
+        @Bindable var settings = settings
         VStack(alignment: .leading, spacing: 16) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 ForEach(Tool.allCases) { tool in
@@ -163,6 +172,12 @@ private struct ToolsSettings: View {
                 Text("Update yt-dlp").font(.headline)
                 Text("Sites change often, and a newer yt-dlp is usually the fix when downloads start failing.")
                     .foregroundStyle(.secondary)
+                Toggle("Update yt-dlp automatically once a week", isOn: $settings.autoUpdateYtDlp)
+                if let last = AppSettings.lastYtDlpUpdate {
+                    Text("Last updated \(last.formatted(.relative(presentation: .named)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let brew = tools.report?.brewURL {
                     HStack {
                         Button("Update with Homebrew") { tools.updateYtDlp(brew: brew) }
@@ -189,13 +204,13 @@ private struct ToolsSettings: View {
             }
         }
         .padding(20)
-        .frame(height: 470, alignment: .top)
+        .frame(height: 520, alignment: .top)
     }
 
     private func status(of tool: Tool) -> String {
-        guard let status = tools.report?[tool] else { return "Checking…" }
-        guard let url = status.url else { return tool.isRequired ? "Not found" : "Not found (optional)" }
-        return "\(status.version ?? "Unknown version") at \(url.path)"
+        guard let status = tools.report?[tool] else { return String(localized: "Checking…") }
+        guard let url = status.url else { return tool.isRequired ? String(localized: "Not found") : String(localized: "Not found (optional)") }
+        return String(localized: "\(status.version ?? String(localized: "Unknown version")) at \(url.path)")
     }
 
     private func path(for tool: Tool) -> Binding<String> {
@@ -207,7 +222,7 @@ private struct ToolsSettings: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.treatsFilePackagesAsDirectories = true
-        panel.message = "Choose the \(tool.displayName) program"
+        panel.message = String(localized: "Choose the \(tool.displayName) program")
         if panel.runModal() == .OK, let url = panel.url {
             settings.toolPaths[tool] = url.path
             Task { await tools.refresh() }

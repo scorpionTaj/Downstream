@@ -15,7 +15,7 @@ enum AppSettings {
 
     /// Notify when a download finishes while the app is in the background. Default on.
     static var notificationsEnabled: Bool {
-        UserDefaults.standard.object(forKey: notificationsKey) as? Bool ?? true
+        flag(notificationsKey, default: true)
     }
 
     static var defaultDownloadFolder: URL {
@@ -63,7 +63,7 @@ enum AppSettings {
     static let hideDockIconKey = "hideDockIcon"
 
     static var showInMenuBar: Bool {
-        get { UserDefaults.standard.object(forKey: showMenuBarKey) as? Bool ?? true }
+        get { flag(showMenuBarKey, default: true) }
         set { UserDefaults.standard.set(newValue, forKey: showMenuBarKey) }
     }
 
@@ -71,6 +71,28 @@ enum AppSettings {
     static var hideDockIcon: Bool {
         get { showInMenuBar && UserDefaults.standard.bool(forKey: hideDockIconKey) }
         set { UserDefaults.standard.set(newValue, forKey: hideDockIconKey) }
+    }
+
+    /// Update yt-dlp with Homebrew once a week. Default on.
+    static var autoUpdateYtDlp: Bool {
+        get { flag("autoUpdateYtDlp", default: true) }
+        set { UserDefaults.standard.set(newValue, forKey: "autoUpdateYtDlp") }
+    }
+
+    static var lastYtDlpUpdate: Date? {
+        get { UserDefaults.standard.object(forKey: "lastYtDlpUpdate") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastYtDlpUpdate") }
+    }
+
+    /// Check GitHub for a newer Downstream once a day. Default on.
+    static var checkForAppUpdates: Bool {
+        get { flag("checkForAppUpdates", default: true) }
+        set { UserDefaults.standard.set(newValue, forKey: "checkForAppUpdates") }
+    }
+
+    static var lastAppUpdateCheck: Date? {
+        get { UserDefaults.standard.object(forKey: "lastAppUpdateCheck") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastAppUpdateCheck") }
     }
 
     /// The preset applied when the Add Download sheet opens. nil means Downstream's defaults.
@@ -87,6 +109,11 @@ enum AppSettings {
         }
         set { UserDefaults.standard.set(newValue.path, forKey: downloadFolderKey) }
     }
+}
+
+/// A boolean setting with a default. `bool(forKey:)` also understands "YES"/"NO" given as launch arguments.
+private func flag(_ key: String, default value: Bool) -> Bool {
+    UserDefaults.standard.object(forKey: key) == nil ? value : UserDefaults.standard.bool(forKey: key)
 }
 
 extension URL {

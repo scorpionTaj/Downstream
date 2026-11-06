@@ -8,10 +8,7 @@ struct ToolSetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
+                IconTile(symbol: "wrench.and.screwdriver.fill", size: 52)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Install the download tools")
                         .font(.title2.weight(.semibold))
@@ -54,7 +51,7 @@ struct ToolSetupView: View {
                     .disabled(tools.report?.installCommand == nil)
                 Button("Check again") { Task { await tools.refresh() } }
                     .keyboardShortcut("r")
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(SunsetButtonStyle())
                     .disabled(tools.isChecking)
             }
         }
@@ -83,8 +80,8 @@ private struct ToolStatusRow: View {
 
     private var title: String {
         let name = status.tool.displayName
-        if status.isFound { return "\(name) \(status.version ?? "(version unknown)")" }
-        return status.tool.isRequired ? "\(name) not found" : "\(name) not found (optional, for faster downloads)"
+        if status.isFound { return "\(name) \(status.version ?? String(localized: "(version unknown)"))" }
+        return status.tool.isRequired ? String(localized: "\(name) not found") : String(localized: "\(name) not found (optional, for faster downloads)")
     }
 
     private var symbol: String {

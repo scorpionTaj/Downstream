@@ -75,16 +75,16 @@ public enum ProgressParser {
     /// A short, human description of a postprocessor, for the status line.
     public static func describe(postprocessor name: String) -> String {
         switch name {
-        case "Merger": "Merging video and audio"
-        case "ExtractAudio": "Converting audio"
-        case "VideoRemuxer", "VideoConvertor": "Converting video"
-        case "EmbedSubtitle": "Embedding subtitles"
-        case "EmbedThumbnail": "Embedding thumbnail"
-        case "Metadata": "Adding metadata"
-        case "SponsorBlock": "Finding SponsorBlock segments"
-        case "ModifyChapters": "Removing SponsorBlock segments"
-        case "MoveFiles": "Finishing up"
-        default: "Processing (\(name))"
+        case "Merger": String(localized: "Merging video and audio")
+        case "ExtractAudio": String(localized: "Converting audio")
+        case "VideoRemuxer", "VideoConvertor": String(localized: "Converting video")
+        case "EmbedSubtitle": String(localized: "Embedding subtitles")
+        case "EmbedThumbnail": String(localized: "Embedding thumbnail")
+        case "Metadata": String(localized: "Adding metadata")
+        case "SponsorBlock": String(localized: "Finding SponsorBlock segments")
+        case "ModifyChapters": String(localized: "Removing SponsorBlock segments")
+        case "MoveFiles": String(localized: "Finishing up")
+        default: String(localized: "Processing (\(name))")
         }
     }
 
@@ -111,7 +111,7 @@ public enum ProgressParser {
         case "finished":
             return .downloadFinished(filename: payload.filename)
         case "error":
-            return .error("Download failed")
+            return .error(String(localized: "Download failed"))
         default:
             return .downloading(DownloadProgress(
                 downloadedBytes: Int64(payload.downloaded_bytes ?? 0),

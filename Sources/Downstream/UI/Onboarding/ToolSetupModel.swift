@@ -45,6 +45,25 @@ final class ToolSetupModel {
         onRefresh?()
     }
 
+    /// Downloads to hold while yt-dlp is replaced: Python loads its modules lazily, so a download running
+    /// during `brew upgrade` can break when the old version's files disappear.
+    weak var downloads: DownloadManager?
+
+    /// yt-dlp at `url` is Homebrew's (its real location is inside a Cellar), so `brew upgrade` can update it.
+    static func isHomebrewManaged(_ url: URL) -> Bool {
+        url.resolvingSymlinksInPath().path.contains("/Cellar/")
+    }
+
+    /// Updates yt-dlp in the background if automatic updates are on, a week has passed, and nothing is downloading.
+    func updateYtDlpIfDue() {
+        guard AppSettings.autoUpdateYtDlp, !isUpdating,
+              let brew = report?.brewURL, let ytDlp = report?[.ytDlp]?.url, Self.isHomebrewManaged(ytDlp),
+              (downloads?.runningCount ?? 0) == 0
+        else { return }
+        if let last = AppSettings.lastYtDlpUpdate, Date().timeIntervalSince(last) < 7 * 24 * 3600 { return }
+        updateYtDlp(brew: brew)
+    }
+
     /// Runs `brew upgrade yt-dlp`, showing its output, then checks the tools again.
     func updateYtDlp(brew: URL) {
         guard !isUpdating else { return }
@@ -52,24 +71,29 @@ final class ToolSetupModel {
         isUpdating = true
         updateOutput = []
         updateResult = nil
+        downloads?.isHeld = true
         Task {
+            defer {
+                downloads?.isHeld = false
+                isUpdating = false
+            }
             do {
                 let running = try ProcessRunner.start(brew, arguments: ["upgrade", "yt-dlp"])
                 for try await line in running.lines where !line.text.isEmpty {
                     updateOutput.append(line.text)
                 }
                 await refresh()
-                let after = report?[.ytDlp]?.version
+                AppSettings.lastYtDlpUpdate = Date()
+                let after = report?[.ytDlp]?.version ?? "?"
                 updateResult = after == before
-                    ? "yt-dlp \(after ?? "") is the latest version."
-                    : "Updated yt-dlp from \(before ?? "?") to \(after ?? "?")."
+                    ? String(localized: "yt-dlp \(after) is the latest version.")
+                    : String(localized: "Updated yt-dlp from \(before ?? "?") to \(after).")
             } catch let ProcessError.failed(code, tail) {
-                updateResult = "Homebrew stopped with status \(code)."
+                updateResult = String(localized: "Homebrew stopped with status \(Int(code)).")
                 if updateOutput.isEmpty { updateOutput = tail }
             } catch {
-                updateResult = "Couldn't run Homebrew: \(error)"
+                updateResult = String(localized: "Couldn't run Homebrew: \(error.localizedDescription)")
             }
-            isUpdating = false
         }
     }
 

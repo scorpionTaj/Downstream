@@ -2,82 +2,95 @@ import AppKit
 import DownstreamCore
 import SwiftUI
 
+/// One download as a card: thumbnail, title, state chip, gradient progress and actions.
 struct DownloadRow: View {
     @Environment(DownloadManager.self) private var downloads
     @Environment(MainWindowModel.self) private var window
     let job: DownloadJob
 
     var body: some View {
-        HStack(spacing: 12) {
-            Thumbnail(url: job.thumbnailURL)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(job.title)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                progressBar
-                Text(DownloadFormatting.status(of: job))
-                    .font(.caption)
-                    .foregroundStyle(isFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                    .lineLimit(2)
-                    .textSelection(.enabled)
+        let style = StatusStyle(job.state)
+        HStack(spacing: 14) {
+            Thumbnail(url: job.thumbnailURL, width: 112)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Text(job.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    StatusChip(style: style)
+                }
+                progress(style)
+                HStack(spacing: 6) {
+                    Text(DownloadFormatting.status(of: job))
+                        .foregroundStyle(isFailed ? AnyShapeStyle(Theme.red) : AnyShapeStyle(.secondary))
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    if let percent {
+                        Text(percent).fontWeight(.semibold).foregroundStyle(style.color).monospacedDigit()
+                    }
+                }
+                .font(.callout)
             }
-            Spacer(minLength: 8)
             buttons
         }
-        .padding(.vertical, 4)
+        .card(accent: style.color)
         .contextMenu { menu }
     }
 
+    private var percent: String? {
+        if case .downloading(let progress?) = job.state, let fraction = progress.fraction {
+            return fraction.formatted(.percent.precision(.fractionLength(0)))
+        }
+        return nil
+    }
+
     @ViewBuilder
-    private var progressBar: some View {
+    private func progress(_ style: StatusStyle) -> some View {
         switch job.state {
-        case .downloading(let progress?) where progress.fraction != nil:
-            ProgressView(value: progress.fraction!)
-                .accessibilityLabel("Download progress")
-        case .downloading, .processing:
-            ProgressView()
-                .progressViewStyle(.linear)
-                .accessibilityLabel("Working")
+        case .downloading(let progress):
+            SunsetProgressBar(fraction: progress?.fraction)
+        case .processing:
+            SunsetProgressBar(fraction: nil, tint: AnyShapeStyle(Theme.purple.gradient))
         case .paused:
-            ProgressView(value: job.lastProgress?.fraction ?? 0)
-                .tint(.secondary)
-                .accessibilityLabel("Paused")
-        case .queued, .completed, .failed, .cancelled:
+            SunsetProgressBar(fraction: job.lastProgress?.fraction ?? 0, tint: AnyShapeStyle(Theme.indigo.opacity(0.7)))
+        case .completed:
+            SunsetProgressBar(fraction: 1, tint: AnyShapeStyle(Theme.green.gradient))
+        case .queued, .failed, .cancelled:
             EmptyView()
         }
     }
 
-    @ViewBuilder
     private var buttons: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             if job.canPause {
-                iconButton("Pause", "pause.circle.fill") { downloads.pause(job) }
+                circle("Pause", "pause.fill", Theme.indigo) { downloads.pause(job) }
             }
             if job.state == .paused {
-                iconButton("Resume", "play.circle.fill") { downloads.resume(job) }
+                circle("Resume", "play.fill", Theme.pink) { downloads.resume(job) }
             }
             if job.canRetry {
-                iconButton("Retry", "arrow.clockwise.circle.fill") { downloads.retry(job) }
+                circle("Retry", "arrow.clockwise", Theme.orange) { downloads.retry(job) }
             }
             if isFailed {
-                iconButton("Show log", "doc.text.magnifyingglass") { window.logJob = job }
+                circle("Show log", "doc.text.magnifyingglass", Theme.red) { window.logJob = job }
             }
             if case .completed(let file) = job.state {
-                iconButton("Show in Finder", "magnifyingglass.circle.fill") { Self.reveal(file) }
+                circle("Show in Finder", "magnifyingglass", Theme.green) { Self.reveal(file) }
             }
             if job.isFinished {
-                iconButton("Remove from list", "xmark") { downloads.remove(job) }
+                circle("Remove from list", "xmark", .gray) { downloads.remove(job) }
             } else {
-                iconButton("Cancel", "xmark.circle.fill") { downloads.cancel(job) }
+                circle("Cancel", "xmark", Theme.red) { downloads.cancel(job) }
             }
         }
     }
 
-    private func iconButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+    private func circle(_ title: LocalizedStringKey, _ symbol: String, _ color: Color, action: @escaping () -> Void) -> some View {
         Button(title, systemImage: symbol, action: action)
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            .buttonStyle(CircleIconButtonStyle(color: color))
             .help(title)
     }
 

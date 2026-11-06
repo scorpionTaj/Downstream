@@ -11,6 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let addDownload: AddDownloadModel
     let window = MainWindowModel()
     let settings = SettingsModel()
+    let updates = AppUpdateModel()
+
+    static let links = (
+        repository: URL(string: "https://github.com/\(AppUpdater.repository)")!,
+        releases: URL(string: "https://github.com/\(AppUpdater.repository)/releases")!,
+        issues: URL(string: "https://github.com/\(AppUpdater.repository)/issues/new")!,
+        supportedSites: URL(string: "https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md")!
+    )
 
     /// Unfinished downloads from the last session are only written back once they've been restored;
     /// until then the saved file is left alone, so quitting before the tools are found loses nothing.
@@ -25,15 +33,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             notify(about: job)
         }
         downloads.onQueueChanged = { [weak self] in self?.savePending() }
-        tools.onRefresh = { [weak self] in self?.restorePendingOnce() }
+        tools.downloads = downloads
+        tools.onRefresh = { [weak self] in
+            self?.restorePendingOnce()
+            self?.tools.updateYtDlpIfDue()
+            self?.updates.checkIfDue()
+        }
         settings.onMaxConcurrentChanged = { [weak self] in self?.downloads.maxConcurrent = $0 }
         settings.onDockIconChanged = { hidden in Self.applyDockIcon(hidden: hidden) }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // With its window closed and in the background, macOS may otherwise quit Downstream on its own
-        // ("automatic termination"), stopping downloads and the menu bar item. Sudden termination (at logout)
-        // would skip saving unfinished downloads.
+        // Downstream keeps working with its window closed (downloads, menu bar), so it opts out of
+        // automatic termination. Sudden termination (at logout) would skip saving unfinished downloads.
+        // Note: "quit when the last window closes" utilities (e.g. Vorssaint) still quit it; that's their setting.
         ProcessInfo.processInfo.disableAutomaticTermination("Downstream keeps running in the menu bar")
         ProcessInfo.processInfo.disableSuddenTermination()
         Self.applyDockIcon(hidden: AppSettings.hideDockIcon)
@@ -47,13 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "Before you start"
-        alert.informativeText = """
-            Downstream downloads video and audio from websites using yt-dlp. \
-            Only download content you own or have permission to download, and follow each site's terms.
-            """
-        alert.addButton(withTitle: "I understand")
-        alert.addButton(withTitle: "Quit")
+        alert.messageText = String(localized: "Before you start")
+        alert.informativeText = String(localized: "Downstream downloads video and audio from websites using yt-dlp. Only download content you own or have permission to download, and follow each site's terms.")
+        alert.addButton(withTitle: String(localized: "I understand"))
+        alert.addButton(withTitle: String(localized: "Quit"))
         if alert.runModal() == .alertFirstButtonReturn {
             UserDefaults.standard.set(true, forKey: key)
         } else {
@@ -77,10 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard running > 0 else { return .terminateNow }
 
         let alert = NSAlert()
-        alert.messageText = running == 1 ? "Quit with a download in progress?" : "Quit with \(running) downloads in progress?"
-        alert.informativeText = "They'll be paused and listed again the next time you open Downstream, ready to resume."
-        alert.addButton(withTitle: "Quit")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = running == 1 ? String(localized: "Quit with a download in progress?") : String(localized: "Quit with \(running) downloads in progress?")
+        alert.informativeText = String(localized: "They'll be paused and listed again the next time you open Downstream, ready to resume.")
+        alert.addButton(withTitle: String(localized: "Quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
         return .terminateNow
     }
@@ -92,6 +102,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool { true }
+
+    // MARK: Menu actions
+
+    /// Downloads the copied link with the default settings; reports a problem in an alert.
+    func pasteAndDownload() {
+        guard let downloadTools = tools.downloadTools else { return }
+        if let problem = addDownload.downloadClipboardLink(in: downloads, tools: downloadTools) {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn't start the download")
+            alert.informativeText = problem
+            alert.runModal()
+        } else {
+            show(.all)
+        }
+    }
+
+    func openDownloadsFolder() {
+        let folder = AppSettings.downloadFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
+    }
+
+    /// Selects a sidebar section and brings the window forward.
+    func show(_ filter: DownloadFilter) {
+        window.filter = filter
+        NSApp.activate()
+        NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }?.makeKeyAndOrderFront(nil)
+    }
 
     private func restorePendingOnce() {
         guard !restoredPending, let downloadTools = tools.downloadTools else { return }
@@ -113,10 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let content = UNMutableNotificationContent()
         switch job.state {
         case .completed:
-            content.title = "Download finished"
+            content.title = String(localized: "Download finished")
             content.body = job.title
         case .failed(let message):
-            content.title = "Download failed"
+            content.title = String(localized: "Download failed")
             content.body = "\(job.title)\n\(message)"
         default:
             return

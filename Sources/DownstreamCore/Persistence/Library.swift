@@ -1,19 +1,24 @@
 import Foundation
 import Observation
 
-/// A completed download, kept after it leaves the download list.
+/// A finished download (completed or failed), kept after it leaves the download list.
 public struct HistoryEntry: Codable, Sendable, Equatable, Identifiable {
     public var id: UUID
     public var url: URL
     public var title: String
     public var thumbnailURL: URL?
-    public var file: URL
+    /// The saved file. nil for a failed download.
+    public var file: URL?
     public var fileSize: Int64?
+    /// Why it failed, or nil if it completed. (Older history files don't have this field: they decode as completed.)
+    public var failure: String?
     public var options: DownloadOptions
     public var completedAt: Date
 
-    public init(id: UUID = UUID(), url: URL, title: String, thumbnailURL: URL?, file: URL, fileSize: Int64?,
-                options: DownloadOptions, completedAt: Date = Date()) {
+    public var isFailed: Bool { failure != nil }
+
+    public init(id: UUID = UUID(), url: URL, title: String, thumbnailURL: URL?, file: URL?, fileSize: Int64?,
+                options: DownloadOptions, failure: String? = nil, completedAt: Date = Date()) {
         self.id = id
         self.url = url
         self.title = title
@@ -21,6 +26,7 @@ public struct HistoryEntry: Codable, Sendable, Equatable, Identifiable {
         self.file = file
         self.fileSize = fileSize
         self.options = options
+        self.failure = failure
         self.completedAt = completedAt
     }
 }
@@ -91,7 +97,14 @@ public final class Library {
 
     // MARK: History
 
+    /// Adds a completed or failed job. Paused, cancelled and running jobs aren't recorded.
     public func record(_ job: DownloadJob) {
+        if case .failed(let message) = job.state {
+            history.insert(HistoryEntry(url: job.url, title: job.title, thumbnailURL: job.thumbnailURL, file: nil,
+                                        fileSize: nil, options: job.options, failure: message), at: 0)
+            trimAndSaveHistory()
+            return
+        }
         guard case .completed(let file) = job.state else { return }
         // A playlist saves several files; each becomes its own entry.
         let files = job.savedFiles.isEmpty ? [file] : job.savedFiles
@@ -101,6 +114,10 @@ public final class Library {
                          fileSize: saved == file ? job.savedFileSize : nil, options: job.options)
         }
         history.insert(contentsOf: entries, at: 0)
+        trimAndSaveHistory()
+    }
+
+    private func trimAndSaveHistory() {
         if history.count > Self.historyLimit { history.removeLast(history.count - Self.historyLimit) }
         save(history, to: historyStore)
     }

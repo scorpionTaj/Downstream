@@ -124,7 +124,7 @@ final class AddDownloadModel {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.directoryURL = folder
-        panel.prompt = "Choose"
+        panel.prompt = String(localized: "Choose")
         if panel.runModal() == .OK, let url = panel.url { folder = url }
     }
 
@@ -150,7 +150,7 @@ final class AddDownloadModel {
     /// Why the Download button is disabled, or nil when it can be pressed.
     var downloadBlocker: String? {
         guard let info else { return "" }
-        if info.isPlaylist && selectedItems.isEmpty { return "Select at least one video." }
+        if info.isPlaylist && selectedItems.isEmpty { return String(localized: "Select at least one video.") }
         return ArgumentBuilder.problem(with: makeOptions())?.description
     }
 
@@ -175,7 +175,7 @@ final class AddDownloadModel {
     /// Returns why it couldn't, or nil when the download was added.
     @discardableResult
     func downloadClipboardLink(in manager: DownloadManager, tools: DownloadTools) -> String? {
-        guard let url = Self.clipboardLink else { return "Copy a link first." }
+        guard let url = Self.clipboardLink else { return String(localized: "Copy a link first.") }
         let options = library.preset(id: AppSettings.defaultPresetID)?.options ?? AppSettings.defaultOptions
         if let problem = ArgumentBuilder.problem(with: options) { return problem.description }
         let job = manager.add(url: url, options: options, title: nil, thumbnailURL: nil,
@@ -268,8 +268,8 @@ final class AddDownloadModel {
     private static func message(for error: Error) -> String {
         switch error {
         case let error as MetadataError: error.description
-        case ProcessError.timedOut: "The site took too long to answer. Try again."
-        default: "Couldn't read this link: \(error)"
+        case ProcessError.timedOut: String(localized: "The site took too long to answer. Try again.")
+        default: String(localized: "Couldn't read this link: \(error.localizedDescription)")
         }
     }
 }

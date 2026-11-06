@@ -196,7 +196,7 @@ public final class DownloadJob: Identifiable {
                 savedFileSize = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value
                 state = .completed(file)
             } else {
-                state = .failed("yt-dlp finished without saving a file.")
+                state = .failed(String(localized: "yt-dlp finished without saving a file."))
             }
         } catch ProcessError.cancelled {
             if stopRequest == .pause {

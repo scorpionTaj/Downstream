@@ -13,11 +13,11 @@ public enum DownloadFormatting {
     /// "45 s left", "4 min left", "1 hr 5 min left".
     public static func timeLeft(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded()))
-        if total < 60 { return "\(total) s left" }
+        if total < 60 { return String(localized: "\(total) s left") }
         let minutes = total / 60
-        if minutes < 60 { return "\(minutes) min left" }
+        if minutes < 60 { return String(localized: "\(minutes) min left") }
         let rest = minutes % 60
-        return rest == 0 ? "\(minutes / 60) hr left" : "\(minutes / 60) hr \(rest) min left"
+        return rest == 0 ? String(localized: "\(minutes / 60) hr left") : String(localized: "\(minutes / 60) hr \(rest) min left")
     }
 
     /// "12:34" or "1:02:03".
@@ -32,35 +32,35 @@ public enum DownloadFormatting {
     public static func status(of job: DownloadJob) -> String {
         switch job.state {
         case .queued:
-            return "Queued"
+            return String(localized: "Queued")
         case .paused:
-            guard let progress = job.lastProgress else { return "Paused" }
-            if let total = progress.totalBytes { return "Paused · \(bytes(progress.downloadedBytes)) of \(bytes(total))" }
-            return "Paused · \(bytes(progress.downloadedBytes))"
+            guard let progress = job.lastProgress else { return String(localized: "Paused") }
+            if let total = progress.totalBytes { return String(localized: "Paused · \(bytes(progress.downloadedBytes)) of \(bytes(total))") }
+            return String(localized: "Paused · \(bytes(progress.downloadedBytes))")
         case .downloading(nil):
-            return job.options.aria2Connections != nil ? "Downloading with aria2…" : "Starting…"
+            return job.options.aria2Connections != nil ? String(localized: "Downloading with aria2…") : String(localized: "Starting…")
         case .downloading(let progress?):
             var parts: [String] = []
             if let total = progress.totalBytes {
-                parts.append("\(bytes(progress.downloadedBytes)) of \(bytes(total))")
+                parts.append(String(localized: "\(bytes(progress.downloadedBytes)) of \(bytes(total))"))
             } else {
                 parts.append(bytes(progress.downloadedBytes))
             }
             if let speed = progress.speed { parts.append(self.speed(speed)) }
             if let eta = progress.eta { parts.append(timeLeft(eta)) }
-            if job.options.downloadPlaylist { parts.insert("Item \(job.savedFiles.count + 1)", at: 0) }
+            if job.options.downloadPlaylist { parts.insert(String(localized: "Item \(job.savedFiles.count + 1)"), at: 0) }
             return parts.joined(separator: " · ")
         case .processing(let step):
             return step + "…"
         case .completed(let file):
             var parts = [file.pathExtension.uppercased()]
             if let size = job.savedFileSize { parts.append(bytes(size)) }
-            if job.savedFiles.count > 1 { parts.insert("\(job.savedFiles.count) files", at: 0) }
+            if job.savedFiles.count > 1 { parts.insert(String(localized: "\(job.savedFiles.count) files"), at: 0) }
             return parts.joined(separator: " · ")
         case .failed(let message):
             return message
         case .cancelled:
-            return "Cancelled"
+            return String(localized: "Cancelled")
         }
     }
 }
