@@ -129,10 +129,12 @@ public enum ProcessRunner {
             for await code in exitStatus.stream { status = code }
             state.exited()
 
+            // A clean exit wins over a stop request that arrived too late to matter:
+            // the work finished (e.g. yt-dlp was already saving the file when it was cancelled).
             switch state.reason {
+            case _ where status == 0: continuation.finish()
             case .cancelled: continuation.finish(throwing: ProcessError.cancelled)
             case .timedOut: continuation.finish(throwing: ProcessError.timedOut)
-            case nil where status == 0: continuation.finish()
             case nil: continuation.finish(throwing: ProcessError.failed(exitCode: status, stderrTail: tail.withLock { $0 }))
             }
         }

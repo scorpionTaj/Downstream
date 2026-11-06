@@ -4,36 +4,29 @@ import SwiftUI
 
 @main
 struct DownstreamApp: App {
-    // `@State` needs a macro plugin that isn't in the Command Line Tools, so app-wide
-    // models are plain stored properties: the App struct is created once.
-    private let tools = ToolSetupModel()
-    private let downloads = DownloadManager()
-    private let addDownload = AddDownloadModel()
+    // `@State` needs a macro plugin that isn't in the Command Line Tools, so the app-wide
+    // models live on the app delegate, which SwiftUI creates once.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var app
 
     init() {
         // Needed when launched as a bare executable (`swift run Downstream`), and harmless inside the .app.
         NSApplication.shared.setActivationPolicy(.regular)
-
-        // yt-dlp runs as a separate process and would keep going after the app quits.
-        let downloads = downloads
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { downloads.cancelAll() }
-        }
     }
 
     var body: some Scene {
         WindowGroup("Downstream") {
             RootView()
-                .environment(tools)
-                .environment(downloads)
-                .environment(addDownload)
+                .environment(app.tools)
+                .environment(app.downloads)
+                .environment(app.addDownload)
+                .environment(app.window)
         }
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Add Download…") { addDownload.present(ytDlp: tools.downloadTools?.ytDlp) }
+                Button("Add Download…") { app.addDownload.present(ytDlp: app.tools.downloadTools?.ytDlp) }
                     .keyboardShortcut("n")
-                    .disabled(tools.downloadTools == nil)
+                    .disabled(app.tools.downloadTools == nil)
             }
         }
     }
@@ -51,7 +44,7 @@ struct RootView: View {
                 ToolSetupView()
             }
         }
-        .frame(minWidth: 620, minHeight: 540)  // tall enough for the Add Download sheet
+        .frame(minWidth: 760, minHeight: 540)  // tall enough for the Add Download sheet
         .task {
             if tools.report == nil { await tools.refresh() }
         }

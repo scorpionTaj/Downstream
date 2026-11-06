@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DownloadRow: View {
     @Environment(DownloadManager.self) private var downloads
+    @Environment(MainWindowModel.self) private var window
     let job: DownloadJob
 
     var body: some View {
@@ -34,34 +35,50 @@ struct DownloadRow: View {
         case .downloading(let progress?) where progress.fraction != nil:
             ProgressView(value: progress.fraction!)
                 .accessibilityLabel("Download progress")
-        case .waiting, .downloading, .processing:
+        case .downloading, .processing:
             ProgressView()
                 .progressViewStyle(.linear)
                 .accessibilityLabel("Working")
-        case .completed, .failed, .cancelled:
+        case .paused:
+            ProgressView(value: job.lastProgress?.fraction ?? 0)
+                .tint(.secondary)
+                .accessibilityLabel("Paused")
+        case .queued, .completed, .failed, .cancelled:
             EmptyView()
         }
     }
 
     @ViewBuilder
     private var buttons: some View {
-        if job.isActive {
-            Button("Cancel", systemImage: "xmark.circle.fill") { job.cancel() }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .help("Cancel this download")
-        } else {
-            if case .completed(let file) = job.state {
-                Button("Show in Finder", systemImage: "magnifyingglass.circle.fill") { Self.reveal(file) }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .help("Show in Finder")
+        HStack(spacing: 10) {
+            if job.canPause {
+                iconButton("Pause", "pause.circle.fill") { downloads.pause(job) }
             }
-            Button("Remove", systemImage: "xmark") { downloads.remove(job) }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .help("Remove from the list. The file stays where it is.")
+            if job.state == .paused {
+                iconButton("Resume", "play.circle.fill") { downloads.resume(job) }
+            }
+            if job.canRetry {
+                iconButton("Retry", "arrow.clockwise.circle.fill") { downloads.retry(job) }
+            }
+            if isFailed {
+                iconButton("Show log", "doc.text.magnifyingglass") { window.logJob = job }
+            }
+            if case .completed(let file) = job.state {
+                iconButton("Show in Finder", "magnifyingglass.circle.fill") { Self.reveal(file) }
+            }
+            if job.isFinished {
+                iconButton("Remove from list", "xmark") { downloads.remove(job) }
+            } else {
+                iconButton("Cancel", "xmark.circle.fill") { downloads.cancel(job) }
+            }
         }
+    }
+
+    private func iconButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: symbol, action: action)
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .help(title)
     }
 
     @ViewBuilder
@@ -71,15 +88,16 @@ struct DownloadRow: View {
             Button("Open") { NSWorkspace.shared.open(file) }
             Divider()
         }
+        if job.canPause { Button("Pause") { downloads.pause(job) } }
+        if job.state == .paused { Button("Resume") { downloads.resume(job) } }
+        if job.canRetry { Button("Retry") { downloads.retry(job) } }
         Button("Copy link") { Self.copy(job.url.absoluteString) }
-        if case .failed(let message) = job.state {
-            Button("Copy error") { Self.copy(message + "\n\n" + job.log.suffix(30).joined(separator: "\n")) }
-        }
+        Button("Show log") { window.logJob = job }
         Divider()
-        if job.isActive {
-            Button("Cancel download") { job.cancel() }
-        } else {
+        if job.isFinished {
             Button("Remove from list") { downloads.remove(job) }
+        } else {
+            Button("Cancel download") { downloads.cancel(job) }
         }
     }
 

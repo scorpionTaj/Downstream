@@ -112,13 +112,14 @@ struct AddDownloadSheet: View {
                         Text("Subtitles")
                         HStack {
                             Toggle("Embed subtitles", isOn: $model.subtitlesEnabled)
+                                .fixedSize()
                             Picker("Language", selection: $model.subtitleLanguage) {
                                 ForEach(model.subtitleChoices, id: \.self) { code in
                                     Text(Self.languageName(code) + (model.isAutomatic(code) ? " (automatic)" : "")).tag(code)
                                 }
                             }
                             .labelsHidden()
-                            .fixedSize()
+                            .frame(maxWidth: 220)
                             .disabled(!model.subtitlesEnabled)
                         }
                     }

@@ -31,8 +31,12 @@ public enum DownloadFormatting {
     @MainActor
     public static func status(of job: DownloadJob) -> String {
         switch job.state {
-        case .waiting:
-            return "Waiting"
+        case .queued:
+            return "Queued"
+        case .paused:
+            guard let progress = job.lastProgress else { return "Paused" }
+            if let total = progress.totalBytes { return "Paused · \(bytes(progress.downloadedBytes)) of \(bytes(total))" }
+            return "Paused · \(bytes(progress.downloadedBytes))"
         case .downloading(nil):
             return job.options.aria2Connections != nil ? "Downloading with aria2…" : "Starting…"
         case .downloading(let progress?):

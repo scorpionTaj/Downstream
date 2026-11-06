@@ -115,4 +115,21 @@ func liveChecks() async {
                                                        arguments: ["-c", "pgrep -f 'cancel-%\\(id\\)s' || true"])
         expectEqual(leftovers, "")
     }
+
+    await suite("live: a cancelled job deletes its partial files") {
+        var options = DownloadOptions()
+        options.rateLimitKiB = 200
+        options.filenameTemplate = "jobcancel [%(id)s].%(ext)s"
+        let jobContext = DownloadContext(url: url, outputDirectory: folder, ffmpeg: ffmpeg)
+        let job = DownloadJob(url: url, options: options, context: jobContext, ytDlp: ytDlp)
+        let run = Task { @MainActor in await job.run(starter: { try ProcessRunner.start($0, arguments: $1) }) }
+        for _ in 0..<600 where (job.lastProgress?.downloadedBytes ?? 0) < 50_000 { try await Task.sleep(for: .milliseconds(50)) }
+        let during = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.filter { $0.hasPrefix("jobcancel") } ?? []
+        print("  · while downloading: \(during), progress file: \(job.lastProgress?.filename ?? "nil")")
+        job.cancel()
+        await run.value
+        expectEqual(job.state, .cancelled)
+        let after = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.filter { $0.hasPrefix("jobcancel") } ?? []
+        expectEqual(after, [])
+    }
 }
