@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Version
         run: |
@@ -35,13 +35,22 @@ jobs:
           .venv/bin/pip install --quiet dmgbuild==1.6.7
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Checks
+      - name: Install yt-dlp, ffmpeg and aria2
+        run: brew install yt-dlp ffmpeg aria2
+
+      - name: Offline checks
         run: swift run DownstreamChecks
+
+      # The live suite downloads real videos; a release must not hinge on YouTube's mood,
+      # so a failure here is recorded but doesn't block the build.
+      - name: Live checks (non-blocking)
+        continue-on-error: true
+        run: swift run DownstreamChecks --live || swift run DownstreamChecks --live
 
       - name: Build the DMG
         run: scripts/release.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: Downstream-${{ env.VERSION }}
           path: |

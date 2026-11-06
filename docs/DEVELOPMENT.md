@@ -1,12 +1,16 @@
 # Developing Downstream
 
-## Building
+## Building and testing
 
 Only the Xcode Command Line Tools are needed. They ship without the macro plugins for SwiftUI's `@State`, SwiftData's `@Model`, Swift Testing and `#Preview`, and without XCTest, so the code:
 
 - keeps view state in `@Observable` models (passed with `.environment`) or `@StateObject`, never `@State`
 - stores history, presets and unfinished downloads as JSON files instead of SwiftData
 - tests with `DownstreamChecks`, a plain executable that exits non-zero on failure
+
+**GitHub Actions does all the building and testing** (`.github/workflows/ci.yml`): every push and pull request runs the offline checks and a strict universal build, pushes to `main` and a weekly schedule also run the live download suite, and the app is uploaded as an artifact. Releases (`.github/workflows/release.yml`) run the checks and build the DMG. Watch a run with `gh run watch` or the Actions tab — there is nothing you have to build or run locally.
+
+The commands exist for when you're iterating and want quick feedback without waiting for CI:
 
 ```bash
 swift run DownstreamChecks          # offline checks
