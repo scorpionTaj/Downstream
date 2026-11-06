@@ -1,6 +1,6 @@
 # Downstream — Project Assessment
 
-*Written 2026-11-06 after a full audit of all 43 Swift files, a complete test run (offline + live checks, release bundle, GUI smoke test), and a bug-fix pass. Reflects the state of the code after that pass; see the git history for the fixes.*
+*Written 2026-11-06 after a full audit of all 43 Swift files, a complete test run (offline + live checks, release bundle, GUI smoke test), and three follow-up fix passes (9 audit bugs, 8 hardening fixes, 3 cleanups). This is the file's final state — every actionable finding is either fixed and checked, or listed under "What remains, deliberately" / "Improvement opportunities left for v1.3+".*
 
 ## What Downstream is
 
@@ -28,19 +28,25 @@ Downstream (SwiftUI app, @Observable models)  →  DownstreamCore (engine: no UI
 5. **Product polish.** Partial-file cleanup on cancel, pause-preserves-partials, restore-on-relaunch, queue hold during yt-dlp updates, background-only notifications, RTL support, throttled progress, per-feature keyboard shortcuts.
 6. **Documentation density.** Nearly every non-obvious line explains *why* (e.g. why `--no-mtime`, why remux is skipped for WebM, why `didSet` self-reassignment recurses under `@Observable`).
 
-## Test status (after this pass)
+## Test status (final state after all passes)
 
 | Suite | Result |
 |---|---|
 | `swift build` (Swift 6 strict concurrency) | clean — **zero compiler warnings** (the pre-existing 8 are fixed) |
-| `swift run DownstreamChecks` (offline) | **325 passed** |
-| `swift run DownstreamChecks --live` (real YouTube + GitHub) | **343 passed** incl. live on a calm network |
+| `swift run DownstreamChecks` (offline) | **332 passed** |
+| `swift run DownstreamChecks --live` (real YouTube + GitHub) | all passed on a calm network |
 | `UNIVERSAL=1 scripts/bundle.sh release` | builds + signs (arm64 + x86_64) |
 | GUI smoke test (dev copy, computer automation) | see below |
 
-(Note: the live suite's subtitle-embedding check is network-dependent and flaked during later runs — the video CDN answers fine while YouTube's subtitle endpoint times out, or TLS connections to youtube.com reset outright (`SSL_ERROR_SYSCALL`). It passed on every run when the network was calm, including two full green runs. The download path it exercises was not modified by the fixes.)
+(Note: the live suite's subtitle-embedding check is network-dependent and flaked during some runs — the video CDN answers fine while YouTube's subtitle endpoint times out, or TLS connections to youtube.com reset outright (`SSL_ERROR_SYSCALL`). It passed on every run when the network was calm, including two full green runs. The download path it exercises was not modified by the fixes.)
 
 GUI smoke test verified end-to-end: welcome guide (5 pages, legal notice), tool detection, add-download sheet (metadata → choices → download of "Me at the zoo"), queue transitions (downloading → completed), a forced failure appearing in History → Failed with working "Try again", the duplicate-link guard, quit-with-running-download (bounded wait, pending saved, no orphan process, no stray `.part` files), and relaunch restoring the paused download.
+
+## Bugs fixed in the third pass (all with new checks)
+
+1. **aria2 transfers are cleaned up on cancel** — aria2 reports no file names, so the `.aria2` control file (or a bare `.part-Frag*` fragment) now scopes the cleanup; stale control files from earlier sessions are ignored by their mtime.
+2. **`MetadataFetcher.fetch` has an offline check** — a local HTTP server rooted at the fixtures stands in for a site: the whole pipeline (spawn yt-dlp, parse, decode) plus its error path run without the network.
+3. **Deduplicated**: the queue status line lives in `DownloadFormatting.queueSummary` (main header + menu bar), the round icon button in `Theme.circle`, and pasteboard access in `Theme`'s `Clipboard`.
 
 ## Bugs fixed in the second pass (all with new checks)
 
@@ -65,30 +71,27 @@ GUI smoke test verified end-to-end: welcome guide (5 pages, legal notice), tool 
 8. **A video URL with `&list=` downloaded the whole playlist** — metadata fetch now passes `--no-playlist` (pure playlist URLs unaffected).
 9. **No duplicate-URL guard** — the same link into the same folder twice ran two yt-dlps over the same files. `DownloadManager.unfinishedJob(url:outputDirectory:)` now backs a blocker in the Add Download sheet and an alert for menu-bar quick downloads.
 
-## Remaining known issues (not fixed, ordered by impact)
+## What remains, deliberately
 
-1. **aria2 downloads defeat cancel cleanup** — with aria2 the filename may never be reported, so `writtenFiles` stays empty and `.aria2`/`.part-Frag*` files survive cancel (cleanup is scoped per file name, and there's nothing to scope by).
-2. **`ProcessRunner` drops the user's PATH** — deliberate for GUI apps, but wrapper-script overrides relying on pyenv-style shims break.
-3. **`AppVersion` treats `1.2.0-beta` as equal to `1.2.0`** — a user on a published beta tag is never offered the final release. (Design choice: pre-release suffixes are ignored for ordering.)
-4. **`MetadataFetcher.fetch()` has no offline check** (live-only); a check against a local yt-dlp fixture server would close the gap.
+Two documented design choices were left as they are:
 
-## Improvement opportunities
+1. **`ProcessRunner` drops the user's PATH** — deliberate for GUI apps (predictable tool resolution); a wrapper-script override relying on pyenv-style shims would break.
+2. **`AppVersion` treats `1.2.0-beta` as equal to `1.2.0`** — pre-release suffixes are ignored for ordering; a user on a published beta tag is never offered the final release.
 
-**Code health**
-- `AppDelegate` is the de facto service locator: owns all models, wires them with five ad-hoc closures, plus a `static weak var shared` used across views. At this size it works; extracting an `AppContainer` or moving wiring into the models would keep it maintainable as features grow.
+## Improvement opportunities left for v1.3+
+
+**Code health (refactors with real risk/benefit trade-offs)**
+- `AppDelegate` is the de facto service locator: owns all models, wires them with five ad-hoc closures, plus a `static weak var shared` used across views. Extracting an `AppContainer` or moving wiring into the models would keep it maintainable as features grow.
 - `AppSettings` is global mutable static state with stringly-typed keys, and `SettingsModel` mirrors ~12 of them via `didSet` boilerplate — two parallel representations of settings.
-- Small duplications: the "N downloading · N queued · speed" summary is built twice (`MainView.headerSummary`, `MenuBarView.summary`); the `circle()` icon-button helper exists twice; `LogSheet` calls into `DownloadRow.copy` (cross-view static coupling).
 - `MainWindowModel` is a grab bag (filter + log sheet + history search + welcome + what's-new + menu-bar message).
-- `Library.save` does synchronous pretty-printed encoding of up to 2000 history entries on the main actor on every queue change — move serialization off-main before the history grows.
+- `Library.save` does synchronous pretty-printed encoding of up to 2000 history entries on the main actor on every queue change. Moving it off-main must preserve the quit-time guarantee (`applicationWillTerminate` depends on synchronous saves) — worth doing with care.
 
 **Testing / CI**
-- The entire UI layer has zero automated coverage (executable targets can't be imported by the checks target). If UI models ever move into a library target, they become checkable; until then the GUI smoke test is manual/automation-only.
-- CI never runs `--live`; a scheduled (weekly) live run would catch yt-dlp output-format drift early.
+- The entire UI layer has zero automated coverage (executable targets can't be imported by the checks target); the GUI smoke test is automation/manual only.
+- CI never runs `--live`; a scheduled (weekly) live run would catch yt-dlp output-format drift early. The subtitle-embedding live check needs a skip/tolerate mode for throttled networks first.
 - No lint/format step (swiftlint/swift-format absent).
-- `scripts/translations.py` isn't wired into CI — new UI strings silently fall back to English; a check comparing `Text`/`String(localized:)` keys against the generated tables would catch drift.
-- The build shows ~19 pre-existing compiler warnings (isolation-related in `AppSettings`, a weak-capture mismatch in `AppUpdateModel`) — worth cleaning up once.
 
-**Roadmap ideas (v1.3+)**
+**Roadmap ideas**
 1. Subscribe to yt-dlp upstream releases for notifications independent of the weekly brew upgrade.
 2. Clipboard watching as an opt-in alternative to manual paste-and-download.
 3. Notarization for the published DMG (release.sh already supports the hooks).
