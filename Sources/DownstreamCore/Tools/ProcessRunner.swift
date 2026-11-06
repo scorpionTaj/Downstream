@@ -113,15 +113,12 @@ public enum ProcessRunner {
         }
         try process.run()
 
-        let tail = Mutex<[String]>([])
+        let tail = LineTail(limit: stderrTailSize)
         Task.detached {
             async let out: Void = readLines(stdout.fileHandleForReading) { continuation.yield(.stdout($0)) }
             async let err: Void = readLines(stderr.fileHandleForReading) { line in
                 continuation.yield(.stderr(line))
-                tail.withLock { buffer in
-                    buffer.append(line)
-                    if buffer.count > stderrTailSize { buffer.removeFirst(buffer.count - stderrTailSize) }
-                }
+                tail.append(line)
             }
             _ = await (out, err)
             // Both pipes hit end-of-file; the exit status follows.
@@ -135,7 +132,7 @@ public enum ProcessRunner {
             case _ where status == 0: continuation.finish()
             case .cancelled: continuation.finish(throwing: ProcessError.cancelled)
             case .timedOut: continuation.finish(throwing: ProcessError.timedOut)
-            case nil: continuation.finish(throwing: ProcessError.failed(exitCode: status, stderrTail: tail.withLock { $0 }))
+            case nil: continuation.finish(throwing: ProcessError.failed(exitCode: status, stderrTail: tail.lines))
             }
         }
 
@@ -190,4 +187,22 @@ public enum ProcessRunner {
         }
         return lines.joined(separator: "\n")
     }
+}
+
+/// The last few lines of a stream, shared between the reader and whoever reports the failure.
+/// A class around the lock so closures share one instance (a `Mutex` itself can't be captured and sent).
+private final class LineTail: Sendable {
+    private let buffer = Mutex<[String]>([])
+    private let limit: Int
+
+    init(limit: Int) { self.limit = limit }
+
+    func append(_ line: String) {
+        buffer.withLock { lines in
+            lines.append(line)
+            if lines.count > limit { lines.removeFirst(lines.count - limit) }
+        }
+    }
+
+    var lines: [String] { buffer.withLock { $0 } }
 }
