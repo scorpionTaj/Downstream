@@ -271,10 +271,30 @@ public final class DownloadJob: Identifiable {
 
 /// Finds and deletes what a cancelled download left behind.
 public enum PartialFiles {
+    /// File extensions yt-dlp writes (media, thumbnails, subtitles, partials, control files).
+    /// Cleanup only deletes prefix-matching files with one of these, so unrelated user files
+    /// sharing the title (`Title [id].nfo`, `Title [id].txt`) survive a cancel.
+    static let artifactExtensions: Set<String> = [
+        "part", "ytdl", "aria2",                                        // partials and control files
+        "mp4", "m4v", "mkv", "webm", "mov", "avi", "3gp", "ts", "thp",  // video
+        "m4a", "mp3", "opus", "ogg", "oga", "flac", "wav", "aac",       // audio
+        "jpg", "jpeg", "png", "webp", "gif", "avif",                    // thumbnails
+        "vtt", "srt", "sbv", "ssa", "ass", "lrc", "ttml",               // subtitles
+        "description",                                                  // .description files
+    ]
+
+    /// True for names that look like what yt-dlp writes for this download.
+    static func isArtifact(_ name: String) -> Bool {
+        let `extension` = (name as NSString).pathExtension
+        return artifactExtensions.contains(`extension`)
+            || `extension`.hasPrefix("part-Frag")     // `Title.mp4.part-Frag3`
+            || name.hasSuffix(".info.json")           // metadata; a plain `.json` is too broad
+    }
+
     /// For each file yt-dlp reported writing (e.g. `Title [id].f401.mp4`), deletes every file in `directory` that
-    /// shares its base name (`Title [id].…`: `.part`, `.ytdl`, `.part-Frag3`, other formats, thumbnails, subtitles)
-    /// and was modified at or after `since`. Files outside `directory` and those in `keeping` are never touched.
-    /// Returns the names it deleted.
+    /// shares its base name (`Title [id].…`: `.part`, `.ytdl`, `.part-Frag3`, other formats, thumbnails, subtitles),
+    /// looks like a yt-dlp artifact, and was modified at or after `since`. Files outside `directory` and those in
+    /// `keeping` are never touched. Returns the names it deleted.
     @discardableResult
     public static func remove(writtenBy files: Set<String>, in directory: URL, since: Date, keeping: Set<String>,
                               fileManager: FileManager = .default) -> [String] {
@@ -290,6 +310,7 @@ public enum PartialFiles {
         var removed: [String] = []
 
         for name in names where prefixes.contains(where: name.hasPrefix) {
+            guard isArtifact(name) else { continue }
             let path = (directoryPath as NSString).appendingPathComponent(name)
             guard !keeping.contains(path),
                   let modified = (try? fileManager.attributesOfItem(atPath: path))?[.modificationDate] as? Date,

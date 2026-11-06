@@ -72,6 +72,25 @@ func updateChecks() async {
         expectEqual(noChecksum.diskImage?.name, "Downstream-1.2.0.dmg")
     }
 
+    await suite("AppUpdater: a failed request reports the HTTP status") {
+        // A local server that answers 404, so no network is involved.
+        let server = try ProcessRunner.start(URL(fileURLWithPath: "/usr/bin/python3"),
+            arguments: ["-c", "import http.server; s = http.server.HTTPServer((\"127.0.0.1\", 0), http.server.SimpleHTTPRequestHandler); print(s.server_address[1], flush=True); s.serve_forever()"])
+        defer { server.cancel() }
+        var port: String?
+        do { for try await line in server.lines { port = line.text; break } }
+        guard let port, let portNumber = Int(port.trimmingCharacters(in: .whitespaces)), portNumber > 0 else {
+            expect(false, "the local server didn't report a port"); return
+        }
+        let feed = URL(string: "http://127.0.0.1:\(portNumber)/missing.json")!
+        do {
+            _ = try await AppUpdater.latestRelease(feed: feed)
+            expect(false, "a 404 feed must be refused")
+        } catch let error as UpdateError {
+            expectEqual(error, .requestFailed(status: 404))
+        }
+    }
+
     await suite("AppUpdater: checksum and install from a disk image") {
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("downstream-update-check-\(UUID().uuidString)")

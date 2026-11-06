@@ -165,10 +165,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quits and opens Downstream again (after an update, or to switch language).
     func relaunch() {
         let relauncher = Process()
+        // Wait for this process to die (bounded at 30 s — a modal macOS refuses to dismiss must
+        // not leave the watchdog looping forever), then open the bundle again.
         relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
-        relauncher.arguments = ["-c", "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; open \"$0\"",
+        relauncher.arguments = ["-c", "for i in $(seq 1 150); do kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null || break; sleep 0.2; done; open \"$0\"",
                                 Bundle.main.bundleURL.path]
-        try? relauncher.run()
+        do {
+            try relauncher.run()
+        } catch {
+            // Rare, but quitting without the relaunch would leave the user to find the app themselves.
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn't start Downstream again automatically.")
+            alert.informativeText = String(localized: "Open Downstream manually; quitting now.")
+            alert.runModal()
+        }
         quitNow()
     }
 

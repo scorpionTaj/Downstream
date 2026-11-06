@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Synchronization
 
@@ -42,15 +43,16 @@ public final class RunningProcess: Sendable {
         self.state = state
     }
 
-    /// Stops the process: SIGINT first so yt-dlp can tidy up, then SIGTERM after `gracePeriod` if it's still running.
+    /// Stops the process: SIGINT first so yt-dlp can tidy up, then SIGTERM after `gracePeriod`
+    /// if it's still running, then SIGKILL after another `gracePeriod` (which can't be ignored).
     public func cancel(gracePeriod: Duration = .seconds(5)) {
         state.stop(reason: .cancelled, gracePeriod: gracePeriod)
     }
 
     /// Stops the process like `cancel`, then blocks the calling thread until it's gone, or until
-    /// `deadline` passes (a process ignoring both signals is left running). Only for quitting:
-    /// after `applicationWillTerminate` returns the app dies, and a child left behind could keep
-    /// writing the file the next session would resume.
+    /// `deadline` passes (a process outliving even SIGKILL is impossible; the deadline only bounds
+    /// reaping). Only for quitting: after `applicationWillTerminate` returns the app dies, and a
+    /// child left behind could keep writing the file the next session would resume.
     public func cancelAndWait(gracePeriod: Duration = .seconds(3), deadline: Duration) {
         state.stopAndWait(reason: .cancelled, gracePeriod: gracePeriod, deadline: deadline)
     }
@@ -75,9 +77,9 @@ public final class RunningProcess: Sendable {
             guard let pid else { return }
             Task.detached { [self] in
                 try? await Task.sleep(for: gracePeriod)
-                process.withLock { process in
-                    if let process, process.isRunning, process.processIdentifier == pid { process.terminate() }
-                }
+                send(SIGTERM, to: pid)
+                try? await Task.sleep(for: gracePeriod)
+                send(SIGKILL, to: pid)
             }
         }
 
@@ -92,18 +94,31 @@ public final class RunningProcess: Sendable {
             }
             guard let pid else { return }
             let clock = ContinuousClock()
-            let graceDeadline = clock.now + gracePeriod
+            let termDeadline = clock.now + gracePeriod
+            let killDeadline = termDeadline + gracePeriod
             let hardDeadline = clock.now + deadline
             var sentTerm = false
+            var sentKill = false
             while process.withLock({ $0?.isRunning == true && $0?.processIdentifier == pid }) {
-                if !sentTerm, clock.now >= graceDeadline {
+                if !sentTerm, clock.now >= termDeadline {
                     sentTerm = true
-                    process.withLock { process in
-                        if let process, process.isRunning, process.processIdentifier == pid { process.terminate() }
-                    }
+                    send(SIGTERM, to: pid)
+                }
+                if !sentKill, clock.now >= killDeadline {
+                    sentKill = true
+                    send(SIGKILL, to: pid)
                 }
                 if clock.now >= hardDeadline { return }
                 Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+
+        /// Signals `pid` if it's still the child we started (not a recycled pid).
+        private func send(_ signal: Int32, to pid: Int32) {
+            process.withLock { process in
+                if let process, process.isRunning, process.processIdentifier == pid {
+                    kill(pid, signal)
+                }
             }
         }
 

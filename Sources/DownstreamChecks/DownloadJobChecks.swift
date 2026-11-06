@@ -253,6 +253,26 @@ func downloadJobChecks() async {
         expectEqual(PartialFiles.baseName(of: "Mr. Fox [abc].mp4"), "Mr. Fox [abc]")
     }
 
+    await suite("PartialFiles: only yt-dlp artifacts are deleted") {
+        expect(PartialFiles.isArtifact("Title [id].mp4.part-Frag2"), "fragment partials count")
+        expect(PartialFiles.isArtifact("Title [id].info.json"), "info json counts")
+        expect(!PartialFiles.isArtifact("Title [id].json"), "a plain .json could be the user's")
+        expect(!PartialFiles.isArtifact("Title [id].nfo"), "media library metadata isn't an artifact")
+
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let now = Date()
+        func touch(_ name: String) { try? Data("x".utf8).write(to: folder.appendingPathComponent(name)) }
+        for name in ["Title [id].mp4.part", "Title [id].info.json", "Title [id].f140.m4a",
+                     "Title [id].nfo", "Title [id].txt", "Title [id].json"] { touch(name) }
+        let removed = PartialFiles.remove(writtenBy: [folder.appendingPathComponent("Title [id].mp4").path],
+                                          in: folder, since: now.addingTimeInterval(-5), keeping: [])
+        expectEqual(removed, ["Title [id].f140.m4a", "Title [id].info.json", "Title [id].mp4.part"])
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Title [id].nfo").path), "the user's .nfo survives")
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Title [id].txt").path), "the user's .txt survives")
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Title [id].json").path), "the user's .json survives")
+    }
+
     await suite("DownloadFormatting") {
         expectEqual(DownloadFormatting.timeLeft(4.4), "4 s left")
         expectEqual(DownloadFormatting.timeLeft(125), "2 min left")

@@ -338,18 +338,28 @@ func processRunnerChecks() async {
         expect(took >= .milliseconds(250), "waited out the grace period")
         expect(took < .seconds(3), "SIGTERM escalation ended it")
 
-        // One that ignores both signals: the wait gives up at the deadline instead of hanging.
-        // The pattern can't match the `pkill` wrapper's own command line (`[0-9a-f]*` doesn't
-        // match a literal "["), only the target whose argument holds the plain marker.
+        // One that ignores both SIGINT and SIGTERM: the SIGKILL escalation ends it (at twice the grace).
+        let immovable = try ProcessRunner.start(sh, arguments: ["-c", #"trap "" INT TERM; echo started; while true; do sleep 0.1; done"#])
+        start = ContinuousClock.now
+        do {
+            for try await line in immovable.lines where line == .stdout("started") {
+                immovable.cancelAndWait(gracePeriod: .milliseconds(300), deadline: .seconds(5))
+            }
+        } catch { expectEqual(error as? ProcessError, .cancelled) }
+        let killTook = ContinuousClock.now - start
+        expect(killTook >= .milliseconds(550), "SIGTERM came first")
+        expect(killTook < .seconds(3), "SIGKILL escalation ended it")
+
+        // A deadline shorter than the SIGKILL stage gives up instead of blocking forever.
         let marker = "downstream-cancelandwait-\(UUID().uuidString)"
         let pattern = "downstream-cancelandwait-[0-9a-f]*"
-        let immovable = try ProcessRunner.start(sh, arguments: ["-c", #"trap "" INT TERM; echo started; while true; do sleep 0.1; done # \#(marker)"#])
+        let immovable2 = try ProcessRunner.start(sh, arguments: ["-c", #"trap "" INT TERM; echo started; while true; do sleep 0.1; done # \#(marker)"#])
         try await Task.sleep(for: .milliseconds(100))   // let it start running
         start = ContinuousClock.now
-        immovable.cancelAndWait(deadline: .milliseconds(500))
-        expect(ContinuousClock.now - start >= .milliseconds(450), "gave up at the deadline")
+        immovable2.cancelAndWait(gracePeriod: .milliseconds(500), deadline: .milliseconds(700))
+        expect(ContinuousClock.now - start < .seconds(2), "gave up at the deadline, before the SIGKILL stage")
         let stillRunning = try await ProcessRunner.output(of: sh, arguments: ["-c", "pgrep -f '\(pattern)' || true"])
-        expect(stillRunning != "", "a process ignoring both signals outlived the wait")
+        expect(stillRunning != "", "the process outlived the short wait")
         _ = try? await ProcessRunner.output(of: sh, arguments: ["-c", "pkill -9 -f '\(pattern)'; true"])
     }
 

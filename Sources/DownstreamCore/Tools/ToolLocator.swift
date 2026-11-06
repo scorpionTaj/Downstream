@@ -96,7 +96,12 @@ public struct ToolLocator: Sendable {
 
     public init(
         searchDirectories: [String] = ToolLocator.homebrewDirectories,
-        isExecutable: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+        isExecutable: @escaping @Sendable (String) -> Bool = { path in
+            // A directory named like the tool would pass isExecutableFile and fail confusingly at spawn.
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else { return false }
+            return FileManager.default.isExecutableFile(atPath: path)
+        }
     ) {
         self.searchDirectories = searchDirectories
         self.isExecutable = isExecutable
@@ -114,18 +119,27 @@ public struct ToolLocator: Sendable {
     /// Where `brew` is, if Homebrew is installed.
     public func locateBrew() -> URL? { firstExecutable(named: "brew") }
 
-    /// Finds every tool and asks each one for its version.
+    /// Finds every tool and asks each one for its version. The probes run in parallel: three
+    /// hung tools would otherwise stack up to 30 s before the first "Check again" finished.
     public func check(overrides: [Tool: String] = [:]) async -> ToolReport {
-        var statuses: [ToolStatus] = []
-        for tool in Tool.allCases {
-            let url = locate(tool, override: overrides[tool])
-            var version: String?
-            if let url, let output = try? await ProcessRunner.output(of: url, arguments: tool.versionArguments, timeout: .seconds(10)) {
-                version = ToolLocator.parseVersion(of: tool, from: output)
+        let found = await withTaskGroup(of: ToolStatus.self) { group -> [ToolStatus] in
+            for tool in Tool.allCases {
+                let override = overrides[tool]
+                group.addTask {
+                    let url = self.locate(tool, override: override)
+                    var version: String?
+                    if let url, let output = try? await ProcessRunner.output(of: url, arguments: tool.versionArguments, timeout: .seconds(10)) {
+                        version = ToolLocator.parseVersion(of: tool, from: output)
+                    }
+                    return ToolStatus(tool: tool, url: url, version: version)
+                }
             }
-            statuses.append(ToolStatus(tool: tool, url: url, version: version))
+            var statuses: [ToolStatus] = []
+            for await status in group { statuses.append(status) }
+            // Completion order is nondeterministic; put the tools back in their declared order.
+            return Tool.allCases.compactMap { tool in statuses.first { $0.tool == tool } }
         }
-        return ToolReport(statuses: statuses, brewURL: locateBrew())
+        return ToolReport(statuses: found, brewURL: locateBrew())
     }
 
     /// Pulls the version number out of a tool's version output.

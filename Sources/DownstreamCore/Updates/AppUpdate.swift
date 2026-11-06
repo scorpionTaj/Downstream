@@ -72,6 +72,7 @@ public enum UpdateError: Error, Equatable, CustomStringConvertible {
     case wrongApp(bundleID: String?)
     case badSignature(String)
     case cannotReplace(String)
+    case requestFailed(status: Int)
 
     public var description: String {
         switch self {
@@ -82,6 +83,11 @@ public enum UpdateError: Error, Equatable, CustomStringConvertible {
         case .wrongApp(let id): String(localized: "The disk image contains a different app (\(id ?? "unknown")).")
         case .badSignature(let detail): String(localized: "The new version's signature isn't valid: \(detail)")
         case .cannotReplace(let detail): String(localized: "Couldn't replace the app: \(detail)")
+        case .requestFailed(let status):
+            // Unauthenticated GitHub API calls are capped at 60/hour per IP.
+            status == 403
+                ? String(localized: "GitHub is limiting requests right now. Try again later.")
+                : String(localized: "The update server answered with status \(status).")
         }
     }
 }
@@ -100,7 +106,7 @@ public enum AppUpdater {
         request.timeoutInterval = 20
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw URLError(.badServerResponse)
+            throw UpdateError.requestFailed(status: http.statusCode)
         }
         return try JSONDecoder().decode(AppRelease.self, from: data)
     }
@@ -142,8 +148,14 @@ public enum AppUpdater {
         let hdiutil = URL(fileURLWithPath: "/usr/bin/hdiutil")
         let mountPoint = FileManager.default.temporaryDirectory.appendingPathComponent("downstream-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
-        _ = try await ProcessRunner.output(of: hdiutil, arguments: ["attach", dmg.path, "-nobrowse", "-readonly",
-                                                                    "-mountpoint", mountPoint.path], timeout: .seconds(60))
+        do {
+            _ = try await ProcessRunner.output(of: hdiutil, arguments: ["attach", dmg.path, "-nobrowse", "-readonly",
+                                                                        "-mountpoint", mountPoint.path], timeout: .seconds(60))
+        } catch {
+            // The attach failed: nothing is mounted, so just drop the mountpoint directory.
+            try? FileManager.default.removeItem(at: mountPoint)
+            throw error
+        }
         let result: Result<T, Error>
         do { result = .success(try await body(mountPoint)) } catch { result = .failure(error) }
         _ = try? await ProcessRunner.output(of: hdiutil, arguments: ["detach", mountPoint.path, "-force"], timeout: .seconds(30))
@@ -179,8 +191,13 @@ public enum AppUpdater {
             do {
                 try FileManager.default.moveItem(at: staging, to: installedApp)
             } catch {
-                if let trashed = trashed as URL? { try? FileManager.default.moveItem(at: trashed, to: installedApp) }
-                throw error
+                // Try to undo the trash; if that fails too, be clear about where the old version is.
+                var restored = false
+                if let trashed = trashed as URL? {
+                    restored = (try? FileManager.default.moveItem(at: trashed, to: installedApp)) != nil
+                }
+                if restored { throw error }
+                throw UpdateError.cannotReplace(String(localized: "The new version couldn't be moved into place, and the old one couldn't be restored automatically. It is still in the Trash — put it back, then try again. (\(error.localizedDescription))"))
             }
         } catch let error as UpdateError {
             try? FileManager.default.removeItem(at: staging)

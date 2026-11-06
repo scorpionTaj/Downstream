@@ -33,14 +33,27 @@ Downstream (SwiftUI app, @Observable models)  →  DownstreamCore (engine: no UI
 | Suite | Result |
 |---|---|
 | `swift build` (Swift 6 strict concurrency) | clean |
-| `swift run DownstreamChecks` (offline) | **311 passed** |
-| `swift run DownstreamChecks --live` (real YouTube + GitHub) | **331 passed** incl. live |
+| `swift run DownstreamChecks` (offline) | **323 passed** |
+| `swift run DownstreamChecks --live` (real YouTube + GitHub) | **343 passed** incl. live |
 | `UNIVERSAL=1 scripts/bundle.sh release` | builds + signs (arm64 + x86_64) |
 | GUI smoke test (dev copy, computer automation) | see below |
 
+(Note: the live suite's subtitle-embedding check has failed twice on this machine with a curl timeout on YouTube's subtitle endpoint while the video CDN answered fine — a network-side throttle that comes and goes; it passed on every run when the network was calm, including both final verification runs.)
+
 GUI smoke test verified end-to-end: welcome guide (5 pages, legal notice), tool detection, add-download sheet (metadata → choices → download of "Me at the zoo"), queue transitions (downloading → completed), a forced failure appearing in History → Failed with working "Try again", the duplicate-link guard, quit-with-running-download (bounded wait, pending saved, no orphan process, no stray `.part` files), and relaunch restoring the paused download.
 
-## Bugs fixed in this pass (all with new checks or GUI verification)
+## Bugs fixed in the second pass (all with new checks)
+
+1. **Cancel escalation ends at SIGKILL** — SIGINT → SIGTERM after `gracePeriod` → SIGKILL after another `gracePeriod` (SIGKILL can't be ignored), in both the async cancel and the blocking quit-time wait. Previously a process ignoring both signals ran forever while the UI showed Cancelled.
+2. **Partial-file cleanup only deletes yt-dlp artifacts** — a cancelled download no longer removes user files that merely share the title prefix (`Title [id].nfo`, `.txt`, plain `.json`); deletion is restricted to known media/thumbnail/subtitle/partial extensions, `.part-Frag*`, and `.info.json`.
+3. **Updater rollback failure is explicit** — if the staged move fails and the old version can't be restored from the Trash, the error now says the old version is in the Trash instead of a generic message.
+4. **`relaunch()` watchdog is bounded** (30 s) and a failure to spawn the relauncher is surfaced in an alert instead of `try?` silence.
+5. **Tool version probes run in parallel** — three hung tools no longer stack up to 30 s on every "Check again".
+6. **Tool paths that point at directories are rejected** instead of failing confusingly at spawn.
+7. **GitHub HTTP errors surface their status** (`requestFailed(status:)`, with a dedicated "rate-limited" message for 403) instead of a generic `URLError`.
+8. **`withMountedImage` cleans up its temp mountpoint when `hdiutil attach` fails.**
+
+## Bugs fixed in the first pass (all with new checks or GUI verification)
 
 1. **Failed downloads never reached History** — `Library.record` was only called for `.completed`, leaving the History Failed tab permanently dead. Now both completed and failed jobs are recorded (the gate lives in `record`).
 2. **Stale metadata fetch in the Add Download sheet** — editing the URL during a fetch didn't cancel it; you could download URL B with video A's metadata and options. Now the in-flight fetch is cancelled on edit and the result is dropped unless the URL still matches.
@@ -54,18 +67,10 @@ GUI smoke test verified end-to-end: welcome guide (5 pages, legal notice), tool 
 
 ## Remaining known issues (not fixed, ordered by impact)
 
-1. **Cancel has no SIGKILL escalation** — SIGINT then SIGTERM after 5s; a process ignoring both keeps running (UI already shows Cancelled). A final SIGKILL stage would bound it.
-2. **Partial-file cleanup can over-delete** — cancel removes any file sharing the base-name prefix with mtime ≥ attempt start; a user file edited *during* the download (`Title [id].nfo`) would be deleted. Restrict to known partial suffixes (`.part`, `.ytdl`, `.part-Frag*`, `.temp`) plus exact reported names.
-3. **aria2 downloads defeat cancel cleanup** — with aria2 the filename may never be reported, so `writtenFiles` stays empty and `.aria2`/`.part-Frag*` files survive cancel.
-4. **Failed move after trashing the old app can leave no app** — updater rollback-from-Trash is best-effort; error text should distinguish "old version restored" from "old version is in the Trash".
-5. **`relaunch()` can spin an orphan shell forever** (no timeout on the `kill -0` loop) and `try? relauncher.run()` fails silently.
-6. **ToolLocator check runs three version probes serially** (up to 3×10s); parallelize with a task group.
-7. **`ToolLocator.isExecutableFile` accepts directories**; a rejected override silently falls back to Homebrew with no UI feedback.
-8. **`ProcessRunner` drops the user's PATH** — deliberate for GUI apps, but wrapper-script overrides relying on pyenv-style shims break.
-9. **`AppVersion` treats `1.2.0-beta` as equal to `1.2.0`** — a user on a published beta tag is never offered the final release.
-10. **GitHub non-200 responses all map to `URLError(.badServerResponse)`** — rate-limit errors read as generic network errors.
-11. **`withMountedImage` leaks the temp mountpoint when `hdiutil attach` throws.**
-12. **`MetadataFetcher.fetch()` has no offline check** (live-only), and `MediaInfo.formats` decoding is all-or-nothing.
+1. **aria2 downloads defeat cancel cleanup** — with aria2 the filename may never be reported, so `writtenFiles` stays empty and `.aria2`/`.part-Frag*` files survive cancel (cleanup is scoped per file name, and there's nothing to scope by).
+2. **`ProcessRunner` drops the user's PATH** — deliberate for GUI apps, but wrapper-script overrides relying on pyenv-style shims break.
+3. **`AppVersion` treats `1.2.0-beta` as equal to `1.2.0`** — a user on a published beta tag is never offered the final release. (Design choice: pre-release suffixes are ignored for ordering.)
+4. **`MetadataFetcher.fetch()` has no offline check** (live-only); a check against a local yt-dlp fixture server would close the gap.
 
 ## Improvement opportunities
 

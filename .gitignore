@@ -4,3 +4,4 @@ build/
 .swiftpm/
 .venv/
 .zcode/
+.vscode/
