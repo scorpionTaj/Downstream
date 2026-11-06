@@ -43,6 +43,20 @@ final class SettingsModel {
 
     var onMaxConcurrentChanged: ((Int) -> Void)?
 
+    var quitBehavior: AppSettings.QuitBehavior { didSet { AppSettings.quitBehavior = quitBehavior } }
+
+    var appearance: AppSettings.Appearance {
+        didSet {
+            AppSettings.appearance = appearance
+            AppSettings.applyAppearance()
+        }
+    }
+
+    /// The language chosen here; takes effect after a relaunch.
+    var language: AppSettings.Language { didSet { AppSettings.language = language } }
+    /// The language Downstream is running in right now, to tell whether a relaunch is needed.
+    let runningLanguage = AppSettings.language
+
     init() {
         downloadFolder = AppSettings.downloadFolder
         maxConcurrent = AppSettings.maxConcurrentDownloads
@@ -53,10 +67,14 @@ final class SettingsModel {
         hideDockIcon = AppSettings.hideDockIcon
         autoUpdateYtDlp = AppSettings.autoUpdateYtDlp
         checkForAppUpdates = AppSettings.checkForAppUpdates
+        quitBehavior = AppSettings.quitBehavior
+        appearance = AppSettings.appearance
+        language = AppSettings.language
     }
 
     /// Picks up values changed elsewhere (the Add Download sheet remembers the last folder).
     func reload() {
         if downloadFolder != AppSettings.downloadFolder { downloadFolder = AppSettings.downloadFolder }
+        if quitBehavior != AppSettings.quitBehavior { quitBehavior = AppSettings.quitBehavior }  // "Remember my choice"
     }
 }

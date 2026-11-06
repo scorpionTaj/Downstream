@@ -1,3 +1,4 @@
+import AppKit
 import DownstreamCore
 import Foundation
 
@@ -93,6 +94,54 @@ enum AppSettings {
     static var lastAppUpdateCheck: Date? {
         get { UserDefaults.standard.object(forKey: "lastAppUpdateCheck") as? Date }
         set { UserDefaults.standard.set(newValue, forKey: "lastAppUpdateCheck") }
+    }
+
+    /// What ⌘Q does: ask, keep Downstream running in the menu bar, or quit.
+    enum QuitBehavior: String, CaseIterable {
+        case ask, keepRunning, quit
+    }
+
+    enum Appearance: String, CaseIterable {
+        case system, light, dark
+    }
+
+    static var appearance: Appearance {
+        get { UserDefaults.standard.string(forKey: "appearance").flatMap(Appearance.init(rawValue:)) ?? .system }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "appearance") }
+    }
+
+    static func applyAppearance() {
+        switch appearance {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
+    /// The app's language. "System" follows macOS; the others set this app's own AppleLanguages,
+    /// which macOS reads at launch.
+    enum Language: String, CaseIterable {
+        case system, en, fr, ar
+    }
+
+    static var language: Language {
+        get {
+            guard let stored = UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"] as? [String],
+                  let first = stored.first else { return .system }
+            return Language(rawValue: String(first.prefix(2))) ?? .system
+        }
+        set {
+            if newValue == .system {
+                UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            } else {
+                UserDefaults.standard.set([newValue.rawValue], forKey: "AppleLanguages")
+            }
+        }
+    }
+
+    static var quitBehavior: QuitBehavior {
+        get { UserDefaults.standard.string(forKey: "quitBehavior").flatMap(QuitBehavior.init(rawValue:)) ?? .ask }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "quitBehavior") }
     }
 
     /// The preset applied when the Add Download sheet opens. nil means Downstream's defaults.

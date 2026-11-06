@@ -13,6 +13,29 @@ func updateChecks() async {
         expectEqual(AppVersion("v3.1.4")?.description, "3.1.4")
     }
 
+    await suite("Changelog parsing (the real CHANGELOG.md)") {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("CHANGELOG.md")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let changelog = Changelog(markdown: text)
+        expect(changelog.releases.count >= 4, "has releases")
+        let infoPlist = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Support/Info.plist")
+        let version = NSDictionary(contentsOf: infoPlist)?["CFBundleShortVersionString"] as? String ?? "?"
+        expectEqual(changelog.releases.first?.version, version)   // CHANGELOG.md is updated with every release
+        expect(changelog.release(version)?.sections.isEmpty == false, "the current version has entries")
+        let notes = Changelog.notes(for: version, in: text) ?? ""
+        expect(notes.hasPrefix("### "), "release notes start at the first section: \(notes.prefix(20))")
+        expect(!notes.contains("## ["), "release notes stop before the previous version")
+
+        let sample = Changelog(markdown: "# Title\nintro\n## [2.0.0] - 2026-01-01\n### Added\n- One\n- Two\n### Fixed\n- Three\n## [1.0.0]\n- Loose\n")
+        expectEqual(sample.releases.map(\.version), ["2.0.0", "1.0.0"])
+        expectEqual(sample.releases[0].date, "2026-01-01")
+        expectEqual(sample.releases[0].sections.map(\.title), ["Added", "Fixed"])
+        expectEqual(sample.releases[0].sections[0].items, ["One", "Two"])
+        expectEqual(sample.releases[1].sections.first?.items, ["Loose"])
+    }
+
     await suite("AppRelease decoding and update decision") {
         let json = #"""
         {"tag_name": "v1.2.0", "name": "Downstream 1.2.0", "body": "Notes", "html_url": "https://github.com/scorpionTaj/Downstream/releases/tag/v1.2.0",

@@ -34,6 +34,7 @@ struct DownstreamApp: App {
                 .environment(app.settings)
                 .environment(app.tools)
                 .environment(app.updates)
+                .environment(app.window)
                 .tint(Theme.pink)
                 .environment(\.layoutDirection, Theme.layoutDirection)
         }
@@ -112,6 +113,9 @@ struct AppCommands: Commands {
             Link("Report a Problem…", destination: AppDelegate.links.issues)
             Divider()
             Link("Sites yt-dlp Supports", destination: AppDelegate.links.supportedSites)
+            Divider()
+            Button("Welcome Guide") { app.showWelcome() }
+            Button("What's New") { app.window.whatsNew = VersionItem(version: app.updates.currentVersion) }
         }
     }
 }
@@ -119,6 +123,7 @@ struct AppCommands: Commands {
 /// Shows first-run setup until the required tools are found, then the main window.
 struct RootView: View {
     @Environment(ToolSetupModel.self) private var tools
+    @Environment(MainWindowModel.self) private var window
 
     var body: some View {
         Group {
@@ -128,7 +133,9 @@ struct RootView: View {
                 ToolSetupView()
             }
         }
-        .frame(minWidth: 820, minHeight: 640)  // room for the Add Download sheet, which can't be taller than the window
+        .frame(minWidth: 820, minHeight: 640)
+        .sheet(isPresented: Binding(get: { window.showWelcome }, set: { window.showWelcome = $0 })) { WelcomeView() }
+        .sheet(item: Binding(get: { window.whatsNew }, set: { window.whatsNew = $0 })) { WhatsNewView(version: $0.version) }  // room for the Add Download sheet, which can't be taller than the window
         // The first tool check runs from AppDelegate at launch.
     }
 }

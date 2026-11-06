@@ -53,15 +53,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > notes.md <<EOF
+          # Notes: this version's section of CHANGELOG.md, then install steps.
+          awk -v v="[$VERSION]" 'index($0, "## ") == 1 { if (found) exit; found = index($0, v) > 0; next } found' CHANGELOG.md > notes.md
+          cat >> notes.md <<EOF
+
           ### Install
           1. Download **Downstream-$VERSION.dmg** below, open it and drag Downstream into Applications.
           2. The first time, right-click Downstream › **Open** (the app isn't notarized yet).
           3. Downstream needs Homebrew's tools: \`brew install yt-dlp ffmpeg aria2\`. It tells you if any are missing.
 
           Already using Downstream? It offers this update itself (Downstream › Check for Updates…).
-
           EOF
           gh release create "$GITHUB_REF_NAME" \
             "build/Downstream-$VERSION.dmg" "build/Downstream-$VERSION.dmg.sha256" \
-            --title "Downstream $VERSION" --notes-file notes.md --generate-notes --verify-tag
+            --title "Downstream $VERSION" --notes-file notes.md --verify-tag

@@ -89,8 +89,10 @@ public enum AppUpdater {
     public static let repository = "scorpionTaj/Downstream"
 
     /// The newest published release. Unauthenticated GitHub API calls are limited to 60 an hour, plenty for this.
-    public static func latestRelease(repository: String = repository, session: URLSession = .shared) async throws -> AppRelease {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!)
+    /// `feed` replaces the GitHub API URL (test builds only, to try updates against a local server).
+    public static func latestRelease(repository: String = repository, feed: URL? = nil,
+                                     session: URLSession = .shared) async throws -> AppRelease {
+        var request = URLRequest(url: feed ?? URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Downstream", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 20

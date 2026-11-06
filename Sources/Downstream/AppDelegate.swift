@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supportedSites: URL(string: "https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md")!
     )
 
+    /// The running delegate, for the few places outside SwiftUI's environment that need it.
+    private(set) static weak var shared: AppDelegate?
+
+    /// Set by an explicit "quit now" (menu bar Quit, relaunch after an update): skips the questions.
+    private var quittingWithoutAsking = false
+
     /// Unfinished downloads from the last session are only written back once they've been restored;
     /// until then the saved file is left alone, so quitting before the tools are found loses nothing.
     private var restoredPending = false
@@ -27,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         addDownload = AddDownloadModel(library: library)
         super.init()
+        Self.shared = self
         downloads.onJobFinished = { [weak self] job in
             guard let self else { return }
             if case .completed = job.state { library.record(job) }
@@ -50,25 +57,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Downstream keeps running in the menu bar")
         ProcessInfo.processInfo.disableSuddenTermination()
         Self.applyDockIcon(hidden: AppSettings.hideDockIcon)
-        showNoticeOnFirstLaunch()
+        AppSettings.applyAppearance()
+        showWelcomeOrWhatsNew()
         Task { await tools.refresh() }
     }
 
-    /// Shown once: Downstream is a neutral tool, and what gets downloaded with it is up to the user.
-    private func showNoticeOnFirstLaunch() {
-        let key = "acceptedNotice"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        NSApp.activate()
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Before you start")
-        alert.informativeText = String(localized: "Downstream downloads video and audio from websites using yt-dlp. Only download content you own or have permission to download, and follow each site's terms.")
-        alert.addButton(withTitle: String(localized: "I understand"))
-        alert.addButton(withTitle: String(localized: "Quit"))
-        if alert.runModal() == .alertFirstButtonReturn {
-            UserDefaults.standard.set(true, forKey: key)
-        } else {
-            NSApp.terminate(nil)
+    /// First launch: the welcome guide (which also carries the "download only what you may" notice).
+    /// After an update: what's new in this version.
+    private func showWelcomeOrWhatsNew() {
+        let current = updates.currentVersion
+        let lastSeen = UserDefaults.standard.string(forKey: "lastSeenVersion")
+        UserDefaults.standard.set(current, forKey: "lastSeenVersion")
+        if !UserDefaults.standard.bool(forKey: "acceptedNotice") {
+            window.showWelcome = true
+        } else if let lastSeen, let old = AppVersion(lastSeen), let new = AppVersion(current), new > old,
+                  ChangelogView.changelog.release(current) != nil {
+            window.whatsNew = VersionItem(version: current)
         }
+    }
+
+    func showWelcome() {
+        window.welcomePage = 0
+        window.showWelcome = true
+        show(window.filter)
     }
 
     /// Downloads keep running with the window closed; the menu bar or the Dock brings it back.
@@ -81,18 +92,110 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !hidden { NSApp.activate() }
     }
 
-    /// Unfinished downloads would stop, so ask first.
+    /// ⌘Q: quit, or keep running in the menu bar, as chosen in Settings (or asked, with "Remember my choice").
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if quittingWithoutAsking { return .terminateNow }
         let running = downloads.runningCount + downloads.queuedCount
-        guard running > 0 else { return .terminateNow }
 
+        switch AppSettings.quitBehavior {
+        case .keepRunning:
+            keepRunningInBackground()
+            return .terminateCancel
+        case .quit:
+            return confirmQuitWithDownloads(running) ? .terminateNow : .terminateCancel
+        case .ask:
+            break
+        }
+
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Quit Downstream or keep it running?")
+        var info = String(localized: "Kept running, Downstream stays in the menu bar and finishes your downloads.")
+        if running > 0 {
+            info += "\n\n" + String(localized: "If you quit, \(running) downloads are paused and come back the next time you open Downstream.")
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: AppSettings.showInMenuBar ? String(localized: "Keep in Menu Bar") : String(localized: "Keep Running"))
+        alert.addButton(withTitle: String(localized: "Quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = String(localized: "Remember my choice (change it in Settings › General)")
+        NSApp.activate()
+        let answer = alert.runModal()
+        let remember = alert.suppressionButton?.state == .on
+        switch answer {
+        case .alertFirstButtonReturn:
+            if remember { AppSettings.quitBehavior = .keepRunning }
+            keepRunningInBackground()
+            return .terminateCancel
+        case .alertSecondButtonReturn:
+            if remember { AppSettings.quitBehavior = .quit }
+            return .terminateNow
+        default:
+            return .terminateCancel
+        }
+    }
+
+    /// Asks before quitting with downloads in progress. True to go ahead.
+    private func confirmQuitWithDownloads(_ running: Int) -> Bool {
+        guard running > 0 else { return true }
         let alert = NSAlert()
         alert.messageText = running == 1 ? String(localized: "Quit with a download in progress?") : String(localized: "Quit with \(running) downloads in progress?")
         alert.informativeText = String(localized: "They'll be paused and listed again the next time you open Downstream, ready to resume.")
         alert.addButton(withTitle: String(localized: "Quit"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
-        return .terminateNow
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Closes the windows and keeps working: in the menu bar if it's shown (Dock icon hidden until a window
+    /// opens again), otherwise hidden with its Dock icon.
+    func keepRunningInBackground() {
+        for window in NSApp.windows where window.isVisible && window.identifier?.rawValue.hasPrefix("main") == true {
+            window.close()
+        }
+        if AppSettings.showInMenuBar {
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            NSApp.hide(nil)
+        }
+    }
+
+    /// Quits and opens Downstream again (after an update, or to switch language).
+    func relaunch() {
+        let relauncher = Process()
+        relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relauncher.arguments = ["-c", "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; open \"$0\"",
+                                Bundle.main.bundleURL.path]
+        try? relauncher.run()
+        quitNow()
+    }
+
+    /// Quits right away, without the quit question (downloads are still paused and saved).
+    func quitNow() {
+        quittingWithoutAsking = true
+        // macOS refuses to quit while a sheet is open. Stop SwiftUI from showing any (another may be queued
+        // behind the one closing), end those already attached, and do it again right before quitting.
+        let closeSheets = { [self] in
+            window.showWelcome = false
+            window.whatsNew = nil
+            window.logJob = nil
+            updates.isPresented = false
+            addDownload.isPresented = false
+            for window in NSApp.windows {
+                if let sheet = window.attachedSheet { window.endSheet(sheet) }
+            }
+        }
+        closeSheets()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            closeSheets()
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// After running in the background, opening a window brings the Dock icon back (unless it's set to stay hidden).
+    func restoreDockIconIfNeeded() {
+        if !AppSettings.hideDockIcon, NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -127,6 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Selects a sidebar section and brings the window forward.
     func show(_ filter: DownloadFilter) {
         window.filter = filter
+        restoreDockIconIfNeeded()
         NSApp.activate()
         NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }?.makeKeyAndOrderFront(nil)
     }

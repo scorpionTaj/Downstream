@@ -39,6 +39,14 @@ final class AppUpdateModel {
     }
 
     private var lastRelease: AppRelease?
+
+    /// Test builds (their own app ID, see scripts/bundle.sh) can read updates from a local feed:
+    ///   open build/Downstream.app --args -DownstreamUpdateFeedURL http://127.0.0.1:8765/latest.json
+    /// The feed's app then has to be a test build too. Release builds ignore this.
+    private var testFeed: URL? {
+        guard Bundle.main.object(forInfoDictionaryKey: "DownstreamReleaseBundleID") != nil else { return nil }
+        return UserDefaults.standard.string(forKey: "DownstreamUpdateFeedURL").flatMap(URL.init(string:))
+    }
     private var downloadTask: Task<Void, Never>?
 
     /// Checks once a day in the background, if automatic checks are on. Shows the sheet only when there's an update.
@@ -61,7 +69,7 @@ final class AppUpdateModel {
         }
         state = .checking
         do {
-            let release = try await AppUpdater.latestRelease()
+            let release = try await AppUpdater.latestRelease(feed: testFeed)
             AppSettings.lastAppUpdateCheck = Date()
             lastRelease = release
             if AppUpdater.isUpdate(release, over: currentVersion) {
@@ -97,16 +105,25 @@ final class AppUpdateModel {
                 guard let asset = release.diskImage else { throw UpdateError.noDiskImage }
                 state = .downloading(0, received: 0, total: asset.size > 0 ? asset.size : nil)
                 let dmg = try await ProgressDownloader.download(asset.downloadURL) { [weak self] received, total in
+                    // Reports arrive from the network thread and can run out of order, even after the download
+                    // has finished: only move forward, and only while still downloading.
+                    guard let self, case .downloading(_, let shown, _) = state, received >= shown else { return }
                     let total = total ?? (asset.size > 0 ? asset.size : nil)
-                    self?.state = .downloading(total.map { Double(received) / Double(max($0, 1)) }, received: received, total: total)
+                    state = .downloading(total.map { min(1, Double(received) / Double(max($0, 1))) }, received: received, total: total)
                 }
+                let size = (try? FileManager.default.attributesOfItem(atPath: dmg.path)[.size] as? NSNumber)?.int64Value ?? asset.size
+                state = .downloading(1, received: size, total: size)
                 defer { try? FileManager.default.removeItem(at: dmg) }
                 if let checksum = release.checksum {
                     let (data, _) = try await URLSession.shared.data(from: checksum.downloadURL)
                     try AppUpdater.verify(dmg, checksumFileContents: String(decoding: data, as: UTF8.self))
                 }
                 state = .installing
-                try await AppUpdater.install(from: dmg, replacing: app, bundleID: Bundle.main.bundleIdentifier ?? "com.scorpiontaj.downstream")
+                // Test builds have their own app ID but install the real releases.
+                let releaseID = testFeed != nil ? Bundle.main.bundleIdentifier ?? ""
+                    : Bundle.main.object(forInfoDictionaryKey: "DownstreamReleaseBundleID") as? String
+                    ?? Bundle.main.bundleIdentifier ?? "com.scorpiontaj.downstream"
+                try await AppUpdater.install(from: dmg, replacing: app, bundleID: releaseID)
                 state = .readyToRelaunch
             } catch is CancellationError {
                 state = .available(release)
@@ -124,12 +141,9 @@ final class AppUpdateModel {
 
     /// Opens the new version once this one has quit (unfinished downloads are saved and come back paused).
     func relaunch() {
-        let path = Bundle.main.bundleURL.path
-        let relauncher = Process()
-        relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
-        relauncher.arguments = ["-c", "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; open \"$0\"", path]
-        try? relauncher.run()
-        NSApp.terminate(nil)
+        // macOS won't quit while a sheet is open (this update window is one), so close it first.
+        isPresented = false
+        AppDelegate.shared?.relaunch()
     }
 }
 

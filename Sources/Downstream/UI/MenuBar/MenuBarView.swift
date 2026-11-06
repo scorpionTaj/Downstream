@@ -163,7 +163,7 @@ struct MenuBarView: View {
             }
             SettingsLink { Label("Settings", systemImage: "gearshape") }
             Spacer()
-            Button("Quit", systemImage: "power") { NSApp.terminate(nil) }
+            Button("Quit", systemImage: "power") { AppDelegate.shared?.quitNow() }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
@@ -174,6 +174,7 @@ struct MenuBarView: View {
 
     /// Brings the main window forward, or opens it if it was closed.
     private func showMainWindow() {
+        AppDelegate.shared?.restoreDockIconIfNeeded()
         NSApp.activate()
         if let existing = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
             existing.makeKeyAndOrderFront(nil)

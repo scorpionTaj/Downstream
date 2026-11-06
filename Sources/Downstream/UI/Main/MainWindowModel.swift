@@ -68,6 +68,11 @@ final class MainWindowModel {
     var historySearch = ""
     var historyFilter: HistoryFilter = .all
     var isConfirmingClearHistory = false
+    var showWelcome = false
+    var welcomePage = 0
+    /// The version whose "What's New" sheet is showing.
+    var whatsNew: VersionItem?
+
     /// Why the menu bar's quick download didn't start, until the menu is opened again.
     var menuBarMessage: String?
 }
