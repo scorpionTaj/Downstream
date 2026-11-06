@@ -93,16 +93,20 @@ struct SunsetProgressBar: View {
                         .frame(width: max(height, geometry.size.width * min(1, max(0, fraction))))
                         .animation(.easeOut(duration: 0.25), value: fraction)
                 } else {
-                    // No @State available (Command Line Tools), so the animation is driven by the clock.
-                    TimelineView(.animation) { context in
-                        let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
-                        let width = geometry.size.width * 0.3
-                        Capsule()
-                            .fill(tint)
+                    // Working, but no percentage (starting, converting, embedding, installing): the whole bar is
+                    // tinted and a shine sweeps across it. A short stripe used to look like "25% done" in a still moment.
+                    // No @State available (Command Line Tools), so the sweep is driven by the clock.
+                    Capsule().fill(tint).opacity(0.45)
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                        let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+                        let width = max(geometry.size.width * 0.35, 40)
+                        LinearGradient(colors: [.white.opacity(0), .white.opacity(0.55), .white.opacity(0)],
+                                       startPoint: .leading, endPoint: .trailing)
                             .frame(width: width)
                             .offset(x: (geometry.size.width + width) * phase - width)
                     }
                     .clipShape(Capsule())
+                    .allowsHitTesting(false)
                 }
             }
         }

@@ -2,6 +2,11 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.2.1] - 2026-11-06
+
+### Fixed
+- Steps without a percentage (starting, converting, embedding, installing an update) now fill the whole bar with a moving shine. The old short sliding stripe looked like the bar was stuck at 25%.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added
