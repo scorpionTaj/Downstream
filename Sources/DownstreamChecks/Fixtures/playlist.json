@@ -1,0 +1,19 @@
+{
+ "_type": "playlist",
+ "id": "UC4QobU6STFB0P71PMvOGN5A",
+ "title": "jawed - Videos",
+ "uploader": "jawed",
+ "webpage_url": "https://www.youtube.com/@jawed/videos",
+ "playlist_count": 1,
+ "entries": [
+  {
+   "_type": "url",
+   "id": "jNQXAC9IVRw",
+   "title": "Me at the zoo",
+   "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+   "duration": 19,
+   "ie_key": "Youtube"
+  },
+  null
+ ]
+}

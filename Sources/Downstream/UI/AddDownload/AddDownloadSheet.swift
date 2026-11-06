@@ -1,0 +1,200 @@
+import DownstreamCore
+import SwiftUI
+
+struct AddDownloadSheet: View {
+    @Environment(AddDownloadModel.self) private var model
+    @Environment(DownloadManager.self) private var downloads
+    @Environment(ToolSetupModel.self) private var tools
+
+    var body: some View {
+        @Bindable var model = model
+
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add download").font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Link").foregroundStyle(.secondary)
+                HStack {
+                    TextField("https://www.youtube.com/watch?v=…", text: $model.urlText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(fetch)
+                        .onChange(of: model.urlText) { model.urlTextChanged() }
+                    Button("Fetch", action: fetch)
+                        .disabled(model.phase == .fetching || model.urlText.isEmpty)
+                }
+            }
+
+            switch model.phase {
+            case .idle:
+                Text("Paste a link from YouTube, Vimeo or hundreds of other sites.")
+                    .foregroundStyle(.secondary)
+            case .fetching:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Getting video info…").foregroundStyle(.secondary)
+                }
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            case .ready(let info):
+                MediaPreview(info: info)
+                choices
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "folder").foregroundStyle(.secondary).accessibilityHidden(true)
+                Text(model.folder.abbreviatedPath)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(model.folder.path)
+                Button("Change…") { model.chooseFolder() }
+                    .buttonStyle(.link)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Save to \(model.folder.abbreviatedPath)")
+
+            HStack {
+                Spacer()
+                Button("Cancel") { model.dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Download") {
+                    if let downloadTools = tools.downloadTools { model.start(in: downloads, tools: downloadTools) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(model.info == nil || tools.downloadTools == nil)
+            }
+        }
+        .padding(20)
+        .frame(width: 520)
+    }
+
+    private func fetch() {
+        if let ytDlp = tools.downloadTools?.ytDlp { model.fetch(ytDlp: ytDlp) }
+    }
+
+    @ViewBuilder
+    private var choices: some View {
+        @Bindable var model = model
+
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+            GridRow {
+                Text("Type").gridColumnAlignment(.trailing)
+                Picker("Type", selection: $model.kind) {
+                    Text("Video").tag(DownloadOptions.Kind.video)
+                    Text("Audio only").tag(DownloadOptions.Kind.audio)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            if model.kind == .video {
+                GridRow {
+                    Text("Quality")
+                    Picker("Quality", selection: $model.maxHeight) {
+                        Text("Best available").tag(Int?.none)
+                        ForEach(model.heightChoices, id: \.self) { Text("\($0)p").tag(Int?.some($0)) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                GridRow {
+                    Text("Format")
+                    Picker("Format", selection: $model.container) {
+                        ForEach(DownloadOptions.VideoContainer.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                if !model.subtitleChoices.isEmpty {
+                    GridRow {
+                        Text("Subtitles")
+                        HStack {
+                            Toggle("Embed subtitles", isOn: $model.subtitlesEnabled)
+                            Picker("Language", selection: $model.subtitleLanguage) {
+                                ForEach(model.subtitleChoices, id: \.self) { code in
+                                    Text(Self.languageName(code) + (model.isAutomatic(code) ? " (automatic)" : "")).tag(code)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                            .disabled(!model.subtitlesEnabled)
+                        }
+                    }
+                }
+            } else {
+                GridRow {
+                    Text("Format")
+                    Picker("Format", selection: $model.audioFormat) {
+                        ForEach(DownloadOptions.AudioFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+            }
+            GridRow {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                Toggle("Embed thumbnail and metadata", isOn: $model.embedThumbnailAndMetadata)
+            }
+        }
+    }
+
+    private static func languageName(_ code: String) -> String {
+        Locale.current.localizedString(forIdentifier: code) ?? code
+    }
+}
+
+/// Thumbnail, title and details of what the link points to.
+struct MediaPreview: View {
+    let info: MediaInfo
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Thumbnail(url: info.thumbnail.flatMap(URL.init(string:)), width: 96)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.title ?? "Untitled")
+                    .font(.headline)
+                    .lineLimit(2)
+                Text(details)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var details: String {
+        var parts: [String] = []
+        if let uploader = info.uploader { parts.append(uploader) }
+        if let entries = info.entries {
+            parts.append("Playlist · \(entries.count) \(entries.count == 1 ? "video" : "videos")")
+        } else if info.isLive {
+            parts.append("Live")
+        } else if let duration = info.duration {
+            parts.append(DownloadFormatting.duration(duration))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// A 16:9 thumbnail, or a placeholder while it loads or when there's none.
+struct Thumbnail: View {
+    let url: URL?
+    var width: CGFloat = 64
+
+    var body: some View {
+        AsyncImage(url: url) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            Image(systemName: "film").foregroundStyle(.tertiary)
+        }
+        .frame(width: width, height: width * 9 / 16)
+        .background(.quaternary.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .accessibilityHidden(true)
+    }
+}
