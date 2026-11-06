@@ -54,11 +54,12 @@ jobs:
       - name: Install yt-dlp, ffmpeg and aria2
         run: brew install yt-dlp ffmpeg aria2
 
-      # The suite downloads real videos from YouTube and installs the latest GitHub release
-      # into a scratch directory. One retry: a rare CDN/subtitle-endpoint timeout shouldn't
-      # fail the whole job.
+      # The live suites that don't need YouTube run here: the real self-update from GitHub
+      # Releases plus the whole offline suite. YouTube bot-walls datacenter IPs ("Sign in to
+      # confirm you're not a bot"), so its suites are skipped — pass cookies as a secret, or
+      # run the full --live from a residential IP, to include them.
       - name: Live checks
-        run: swift run DownstreamChecks --live || swift run DownstreamChecks --live
+        run: swift run DownstreamChecks --live --no-youtube || swift run DownstreamChecks --live --no-youtube
 
   build:
     name: Universal release build

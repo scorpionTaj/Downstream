@@ -2,12 +2,20 @@ import Foundation
 @testable import DownstreamCore
 
 /// Runs real downloads through the whole engine. Needs the network and Homebrew's yt-dlp and ffmpeg.
-/// Run with: swift run DownstreamChecks --live
+/// Run with: swift run DownstreamChecks --live [--no-youtube]
 func liveChecks() async {
     let report = await ToolLocator().check()
     guard let ytDlp = report[.ytDlp]?.url, let ffmpeg = report[.ffmpeg]?.url else {
         print("• live checks skipped: yt-dlp or ffmpeg not found")
         return
+    }
+    // YouTube bot-walls datacenter IPs ("Sign in to confirm you're not a bot") — which is exactly
+    // where GitHub-hosted runners live — so CI passes --no-youtube and runs only the suites that
+    // don't download from YouTube. From a residential IP, leave the flag off for the full suite.
+    let skipYouTube = CommandLine.arguments.contains("--no-youtube")
+    @MainActor func youtubeSuite(_ name: String, _ body: @MainActor () async throws -> Void) async {
+        guard !skipYouTube else { print("• \(name)\n  · skipped: --no-youtube (YouTube blocks datacenter IPs)"); return }
+        await suite(name, body)
     }
     // "Me at the zoo": 19 seconds, the first video on YouTube.
     let url = URL(string: "https://www.youtube.com/watch?v=jNQXAC9IVRw")!
@@ -33,14 +41,14 @@ func liveChecks() async {
         return try await ProcessRunner.output(of: ffprobe, arguments: ["-v", "error", "-show_entries", entries, "-of", "default=nw=1:nk=1", path])
     }
 
-    await suite("live: metadata") {
+    await youtubeSuite("live: metadata") {
         let info = try await MetadataFetcher(ytDlp: ytDlp).fetch(url)
         expectEqual(info.title, "Me at the zoo")
         expect(!info.formats.isEmpty, "formats listed")
         print("  · heights \(info.availableHeights), subtitles \(info.subtitleLanguages)")
     }
 
-    await suite("live: bad URL gives yt-dlp's error") {
+    await youtubeSuite("live: bad URL gives yt-dlp's error") {
         do {
             _ = try await MetadataFetcher(ytDlp: ytDlp).fetch(URL(string: "https://www.youtube.com/watch?v=xxxxxxxxxxx")!)
             expect(false, "should fail")
@@ -50,7 +58,7 @@ func liveChecks() async {
         }
     }
 
-    await suite("live: audio to MP3") {
+    await youtubeSuite("live: audio to MP3") {
         var options = DownloadOptions()
         options.kind = .audio
         options.audioFormat = .mp3
@@ -65,7 +73,7 @@ func liveChecks() async {
         }
     }
 
-    await suite("live: video, 240p MP4 with embedded English subtitles") {
+    await youtubeSuite("live: video, 240p MP4 with embedded English subtitles") {
         var options = DownloadOptions()
         options.maxHeight = 240
         options.subtitles = SubtitleOptions(languages: ["en"], embed: true)
@@ -85,7 +93,7 @@ func liveChecks() async {
         }
     }
 
-    await suite("live: download through aria2") {
+    await youtubeSuite("live: download through aria2") {
         guard context.aria2c != nil else { print("  · skipped: aria2c not installed"); return }
         var options = DownloadOptions()
         options.kind = .audio
@@ -99,7 +107,7 @@ func liveChecks() async {
         print("  · \(updates) progress updates via aria2")
     }
 
-    await suite("live: cancelling leaves no yt-dlp process behind") {
+    await youtubeSuite("live: cancelling leaves no yt-dlp process behind") {
         var options = DownloadOptions()
         options.rateLimitKiB = 20   // slow enough to still be running when cancelled
         options.filenameTemplate = "cancel-%(id)s.%(ext)s"
@@ -116,7 +124,7 @@ func liveChecks() async {
         expectEqual(leftovers, "")
     }
 
-    await suite("live: a cancelled job deletes its partial files") {
+    await youtubeSuite("live: a cancelled job deletes its partial files") {
         var options = DownloadOptions()
         options.rateLimitKiB = 200
         options.filenameTemplate = "jobcancel [%(id)s].%(ext)s"

@@ -41,11 +41,10 @@ jobs:
       - name: Offline checks
         run: swift run DownstreamChecks
 
-      # The live suite downloads real videos; a release must not hinge on YouTube's mood,
-      # so a failure here is recorded but doesn't block the build.
-      - name: Live checks (non-blocking)
-        continue-on-error: true
-        run: swift run DownstreamChecks --live || swift run DownstreamChecks --live
+      # The non-YouTube live suites (the real self-update from GitHub Releases): YouTube
+      # bot-walls datacenter IPs, so its download suites only run from a residential IP.
+      - name: Live checks
+        run: swift run DownstreamChecks --live --no-youtube || swift run DownstreamChecks --live --no-youtube
 
       - name: Build the DMG
         run: scripts/release.sh
