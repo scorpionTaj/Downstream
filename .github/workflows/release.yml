@@ -44,6 +44,8 @@ jobs:
       # The non-YouTube live suites (the real self-update from GitHub Releases): YouTube
       # bot-walls datacenter IPs, so its download suites only run from a residential IP.
       - name: Live checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: swift run DownstreamChecks --live --no-youtube || swift run DownstreamChecks --live --no-youtube
 
       - name: Build the DMG

@@ -142,7 +142,10 @@ func liveChecks() async {
     }
 
     await suite("live: update a 1.0.0 copy from the latest GitHub release") {
-        let release = try await AppUpdater.latestRelease()
+        // CI runners share IP ranges and exhaust GitHub's unauthenticated API limit; the
+        // workflow's own token (5,000/hour) is picked up from the environment when present.
+        let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"]
+        let release = try await AppUpdater.latestRelease(token: token)
         print("  · latest release \(release.tagName), \(release.diskImage?.name ?? "no dmg")")
         expect(AppUpdater.isUpdate(release, over: "1.0.0"), "the latest release is newer than 1.0.0")
         guard let asset = release.diskImage, let checksum = release.checksum else { expect(false, "release has a dmg and checksum"); return }

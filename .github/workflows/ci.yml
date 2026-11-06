@@ -57,8 +57,11 @@ jobs:
       # The live suites that don't need YouTube run here: the real self-update from GitHub
       # Releases plus the whole offline suite. YouTube bot-walls datacenter IPs ("Sign in to
       # confirm you're not a bot"), so its suites are skipped — pass cookies as a secret, or
-      # run the full --live from a residential IP, to include them.
+      # run the full --live from a residential IP, to include them. The token lifts the
+      # GitHub API limit (runners share IPs and exhaust the unauthenticated 60/hour).
       - name: Live checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: swift run DownstreamChecks --live --no-youtube || swift run DownstreamChecks --live --no-youtube
 
   build:

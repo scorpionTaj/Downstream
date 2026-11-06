@@ -96,13 +96,15 @@ public enum UpdateError: Error, Equatable, CustomStringConvertible {
 public enum AppUpdater {
     public static let repository = "scorpionTaj/Downstream"
 
-    /// The newest published release. Unauthenticated GitHub API calls are limited to 60 an hour, plenty for this.
-    /// `feed` replaces the GitHub API URL (test builds only, to try updates against a local server).
-    public static func latestRelease(repository: String = repository, feed: URL? = nil,
+    /// The newest published release. Unauthenticated GitHub API calls are limited to 60 an hour per IP —
+    /// plenty for the app, but shared CI runners exhaust them, so a `token` (GitHub's `GITHUB_TOKEN`)
+    /// lifts that to 5,000. `feed` replaces the GitHub API URL (test builds only, for a local server).
+    public static func latestRelease(repository: String = repository, feed: URL? = nil, token: String? = nil,
                                      session: URLSession = .shared) async throws -> AppRelease {
         var request = URLRequest(url: feed ?? URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Downstream", forHTTPHeaderField: "User-Agent")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.timeoutInterval = 20
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
