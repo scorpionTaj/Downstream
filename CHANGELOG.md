@@ -2,7 +2,7 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
-## [1.3.1] - 2026-11-16
+## [1.3.2] - 2026-11-16
 
 ### Added
 - Settings › General › "When a download fails": choose how many times a download tries again by itself (0 to 10) and how long the first wait is. Each wait is five times longer than the one before, up to 10 minutes.
