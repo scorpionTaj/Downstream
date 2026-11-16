@@ -189,6 +189,12 @@ func argumentBuilderChecks() async {
         expect(args.contains("--write-auto-subs") && args.contains("--embed-subs"), "subtitle flags")
         expect(!args.contains("--write-subs"), "embedding doesn't also write subtitle files (it would leave a .vtt behind)")
         expect(args.contains("--ignore-errors"), "a refused subtitle request doesn't fail the video")
+        expect(args.contains("fragment:exp=1:20"), "retries wait between tries")
+        let second = try ArgumentBuilder.subtitleArguments(options, context: context)
+        expectEqual(value(after: "--sub-langs", in: second), "en,de")
+        expect(second.contains("--skip-download") && second.contains("--write-subs") && second.contains("--write-auto-subs"),
+               "the second try fetches only the subtitles, as files")
+        expect(!second.contains("--embed-subs") && second.last == context.url.absoluteString, "nothing to embed into")
         expectEqual(value(after: "--sponsorblock-remove", in: args), "sponsor,selfpromo,music_offtopic")
         expectEqual(value(after: "--cookies-from-browser", in: args), "firefox")
         expectEqual(value(after: "--downloader", in: args), "/opt/homebrew/bin/aria2c")

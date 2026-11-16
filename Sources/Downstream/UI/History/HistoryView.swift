@@ -120,6 +120,7 @@ private struct HistoryRow: View {
         if let saved = entry.file { parts.append(saved.pathExtension.uppercased()) }
         if let size = entry.fileSize { parts.append(DownloadFormatting.bytes(size)) }
         parts.append(date)
+        if entry.subtitlesMissing == true { parts.append(String(localized: "Subtitles unavailable")) }
         if file == nil { parts.append(String(localized: "File moved or deleted")) }
         return parts.joined(separator: " · ")
     }

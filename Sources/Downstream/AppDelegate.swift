@@ -1,5 +1,6 @@
 import AppKit
 import DownstreamCore
+import Network
 import UserNotifications
 
 /// Owns the app-wide models and handles launching, quitting and notifications.
@@ -29,6 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Unfinished downloads from the last session are only written back once they've been restored;
     /// until then the saved file is left alone, so quitting before the tools are found loses nothing.
     private var restoredPending = false
+    private var restoringPending = false
+
+    private let network = NWPathMonitor()
 
     override init() {
         addDownload = AddDownloadModel(library: library)
@@ -62,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.applyDockIcon(hidden: AppSettings.hideDockIcon)
         AppSettings.applyAppearance()
         showWelcomeOrWhatsNew()
+        // Offline, failing downloads wait for the connection instead of failing.
+        network.pathUpdateHandler = { [weak self] path in
+            let online = path.status != .unsatisfied
+            Task { @MainActor in self?.downloads.isOnline = online }
+        }
+        network.start(queue: .global(qos: .utility))
         Task { await tools.refresh() }
     }
 
@@ -251,9 +261,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func restorePendingOnce() {
-        guard !restoredPending, let downloadTools = tools.downloadTools else { return }
-        restoredPending = true
-        downloads.restore(library.loadPending(), tools: downloadTools)
+        guard !restoringPending, let downloadTools = tools.downloadTools else { return }
+        restoringPending = true
+        Task {
+            // After a crash, the last session's yt-dlp may still be writing the files these would resume.
+            await OrphanedDownloads.stop()
+            downloads.restore(library.loadPending(), tools: downloadTools)
+            restoredPending = true
+            if AppSettings.resumeOnLaunch { downloads.resumeAll() }
+        }
     }
 
     private func savePending() {

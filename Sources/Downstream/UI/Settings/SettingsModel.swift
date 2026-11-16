@@ -40,6 +40,7 @@ final class SettingsModel {
 
     var autoUpdateYtDlp: Bool { didSet { AppSettings.autoUpdateYtDlp = autoUpdateYtDlp } }
     var checkForAppUpdates: Bool { didSet { AppSettings.checkForAppUpdates = checkForAppUpdates } }
+    var resumeOnLaunch: Bool { didSet { AppSettings.resumeOnLaunch = resumeOnLaunch } }
 
     var onMaxConcurrentChanged: ((Int) -> Void)?
 
@@ -67,6 +68,7 @@ final class SettingsModel {
         hideDockIcon = AppSettings.hideDockIcon
         autoUpdateYtDlp = AppSettings.autoUpdateYtDlp
         checkForAppUpdates = AppSettings.checkForAppUpdates
+        resumeOnLaunch = AppSettings.resumeOnLaunch
         quitBehavior = AppSettings.quitBehavior
         appearance = AppSettings.appearance
         language = AppSettings.language

@@ -51,6 +51,15 @@ public final class DownloadManager {
         didSet { if !isHeld { schedule() } }
     }
 
+    /// Whether the Mac has a network connection (the app watches it). Offline, a failing download waits
+    /// for the connection instead of failing, and the Mac isn't kept awake for it.
+    public var isOnline = true {
+        didSet { keepAwakeWhileRunning() }
+    }
+
+    /// Held while downloads run, so the Mac doesn't fall asleep in the middle of one.
+    private var awake: NSObjectProtocol?
+
     private let starter: ProcessStarter
     /// Jobs handed to a run task. Tracked separately from `state`, which only changes once the task starts.
     private var started: Set<UUID> = []
@@ -86,6 +95,7 @@ public final class DownloadManager {
         let context = DownloadContext(url: url, outputDirectory: outputDirectory, ffmpeg: tools.ffmpeg, aria2c: tools.aria2c)
         let job = DownloadJob(url: url, options: options, context: context, ytDlp: tools.ytDlp,
                               title: title, thumbnailURL: thumbnailURL)
+        job.isOnline = { [weak self] in self?.isOnline ?? true }
         jobs.insert(job, at: 0)
         schedule()
         onQueueChanged?()
@@ -126,14 +136,16 @@ public final class DownloadManager {
 
     public func removeFinished() {
         jobs.removeAll { $0.isFinished }
+        onQueueChanged?()   // failed downloads are saved too
     }
 
     /// Unfinished downloads, oldest first, for saving.
     public var pendingDownloads: [PendingDownload] { jobs.reversed().compactMap(\.pendingSnapshot) }
 
-    /// Adds downloads saved at the last quit, paused, below anything already in the list.
+    /// Adds downloads saved at the last quit (paused, or failed as they were) below anything already in the list.
     public func restore(_ pending: [PendingDownload], tools: DownloadTools) {
         let restored = pending.reversed().map { DownloadJob(restoring: $0, tools: tools) }
+        for job in restored { job.isOnline = { [weak self] in self?.isOnline ?? true } }
         jobs.append(contentsOf: restored)
     }
 
@@ -184,6 +196,15 @@ public final class DownloadManager {
         onQueueChanged?()
     }
 
+    private func keepAwakeWhileRunning() {
+        if started.isEmpty || !isOnline {
+            if let awake { ProcessInfo.processInfo.endActivity(awake) }
+            awake = nil
+        } else if awake == nil {
+            awake = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "Downloading")
+        }
+    }
+
     /// Starts the oldest queued jobs until `maxConcurrent` are running.
     private func schedule() {
         guard !isHeld else { return }
@@ -191,11 +212,13 @@ public final class DownloadManager {
         for job in jobs.reversed() where started.count < maxConcurrent {
             guard job.state == .queued, !started.contains(job.id) else { continue }
             started.insert(job.id)
+            keepAwakeWhileRunning()
             let starter = starter
             Task {
                 try? FileManager.default.createDirectory(at: job.context.outputDirectory, withIntermediateDirectories: true)
                 await job.run(starter: starter)
                 started.remove(job.id)
+                keepAwakeWhileRunning()
                 switch job.state {
                 case .completed, .failed: onJobFinished?(job)
                 default: break

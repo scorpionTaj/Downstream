@@ -2,6 +2,27 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.3.0] - 2026-11-16
+
+### Added
+- Downloads try again by themselves. A temporary failure — the site throttling ("429"), a server error, a dropped connection — is retried after 5 seconds, 30 seconds and 2 minutes; the row says "Trying again (2 of 3)…". Permanent errors still fail straight away.
+- With no internet connection, a download waits ("Waiting for the network…") and carries on when the connection is back, instead of failing.
+- A download that stops making progress for five minutes is restarted from where it was.
+- The Mac no longer falls asleep in the middle of a download.
+- Settings › General: "Continue unfinished downloads when Downstream opens". Off by default: they come back paused, as before.
+- Failed downloads stay in the list after you quit, with their log, so you can still read why and retry.
+- Subtitles that were refused get a second try once the video is saved. If it works they're saved as a file next to the video ("Subtitles in a separate file"). History remembers when a video has none.
+- A playlist where some items fail is no longer marked failed as a whole: it's complete, and the row says how many items failed.
+
+### Improved
+- Common errors are explained in plain words with what to do — sign-in required, not available in your country, unavailable or private video, full disk, unsupported link, outdated yt-dlp. yt-dlp's own message stays in the log.
+- yt-dlp waits a little longer between its own connection retries instead of retrying back to back.
+
+### Fixed
+- If the download folder is gone (a drive was unplugged), the download pauses and says so instead of failing. Resume it once the drive is back.
+- A download no longer starts on a disk that's almost full; it says how much space is left.
+- After a crash, a yt-dlp left running by the old session is stopped before its download is restored, so the two can't write the same file.
+
 ## [1.2.4] - 2026-11-16
 
 ### Fixed

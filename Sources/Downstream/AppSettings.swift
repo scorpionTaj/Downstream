@@ -85,6 +85,13 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: "lastYtDlpUpdate") }
     }
 
+    /// Continue the downloads that were unfinished at the last quit as soon as Downstream opens. Default off:
+    /// they come back paused.
+    static var resumeOnLaunch: Bool {
+        get { flag("resumeOnLaunch", default: false) }
+        set { UserDefaults.standard.set(newValue, forKey: "resumeOnLaunch") }
+    }
+
     /// Check GitHub for a newer Downstream once a day. Default on.
     static var checkForAppUpdates: Bool {
         get { flag("checkForAppUpdates", default: true) }

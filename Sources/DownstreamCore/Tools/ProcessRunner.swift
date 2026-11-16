@@ -255,3 +255,13 @@ private final class LineTail: Sendable {
 
     var lines: [String] { buffer.withLock { $0 } }
 }
+
+/// yt-dlp processes a crashed Downstream left behind. They'd keep writing the files a restored download resumes.
+public enum OrphanedDownloads {
+    /// Asks them to stop (SIGINT, as for a pause). Only processes whose parent is gone (adopted by launchd)
+    /// and whose arguments carry `marker` — by default the progress template only Downstream passes.
+    public static func stop(marker: String = "download:" + ArgumentBuilder.downloadProgressPrefix) async {
+        _ = try? await ProcessRunner.output(of: URL(fileURLWithPath: "/usr/bin/pkill"),
+                                            arguments: ["-INT", "-P", "1", "-f", marker], timeout: .seconds(5))
+    }
+}

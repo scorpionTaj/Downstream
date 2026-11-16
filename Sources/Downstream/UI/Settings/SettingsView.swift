@@ -84,6 +84,10 @@ private struct GeneralSettings: View {
                     Text("Downstream then lives in the menu bar only. Open the window from there.")
                 }
                 .disabled(!settings.showInMenuBar)
+                Toggle(isOn: $settings.resumeOnLaunch) {
+                    Text("Continue unfinished downloads when Downstream opens")
+                    Text("Otherwise they come back paused.")
+                }
             }
 
             TileSection(title: "Notifications", symbol: "bell.badge.fill", color: Theme.purple) {

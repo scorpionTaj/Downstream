@@ -12,13 +12,15 @@ public struct HistoryEntry: Codable, Sendable, Equatable, Identifiable {
     public var fileSize: Int64?
     /// Why it failed, or nil if it completed. (Older history files don't have this field: they decode as completed.)
     public var failure: String?
+    /// The subtitles that were asked for couldn't be fetched. (Older history files don't have this field.)
+    public var subtitlesMissing: Bool?
     public var options: DownloadOptions
     public var completedAt: Date
 
     public var isFailed: Bool { failure != nil }
 
     public init(id: UUID = UUID(), url: URL, title: String, thumbnailURL: URL?, file: URL?, fileSize: Int64?,
-                options: DownloadOptions, failure: String? = nil, completedAt: Date = Date()) {
+                options: DownloadOptions, failure: String? = nil, subtitlesMissing: Bool? = nil, completedAt: Date = Date()) {
         self.id = id
         self.url = url
         self.title = title
@@ -27,6 +29,7 @@ public struct HistoryEntry: Codable, Sendable, Equatable, Identifiable {
         self.fileSize = fileSize
         self.options = options
         self.failure = failure
+        self.subtitlesMissing = subtitlesMissing
         self.completedAt = completedAt
     }
 }
@@ -44,7 +47,7 @@ public struct Preset: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-/// A download that hadn't finished when the app quit. Restored paused on next launch.
+/// A download that hadn't finished, or had failed, when the app quit. Restored on next launch.
 public struct PendingDownload: Codable, Sendable, Equatable {
     public var url: URL
     public var title: String
@@ -56,6 +59,10 @@ public struct PendingDownload: Codable, Sendable, Equatable {
     public var startedAt: Date?
     public var writtenFiles: [String]
     public var lastProgress: SavedProgress?
+    /// Set for a download that failed: it comes back failed, with its log, instead of paused.
+    /// (Older files don't have these fields.)
+    public var failure: String? = nil
+    public var log: [String]? = nil
 
     public struct SavedProgress: Codable, Sendable, Equatable {
         public var downloadedBytes: Int64
@@ -111,7 +118,8 @@ public final class Library {
         let entries = files.reversed().map { saved in
             HistoryEntry(url: job.url, title: files.count > 1 ? saved.deletingPathExtension().lastPathComponent : job.title,
                          thumbnailURL: files.count > 1 ? nil : job.thumbnailURL, file: saved,
-                         fileSize: saved == file ? job.savedFileSize : nil, options: job.options)
+                         fileSize: saved == file ? job.savedFileSize : nil, options: job.options,
+                         subtitlesMissing: job.subtitlesMissing ? true : nil)
         }
         history.insert(contentsOf: entries, at: 0)
         trimAndSaveHistory()

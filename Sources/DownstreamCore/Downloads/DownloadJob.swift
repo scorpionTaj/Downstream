@@ -52,8 +52,35 @@ public final class DownloadJob: Identifiable {
     public private(set) var log: [String] = []
     /// yt-dlp couldn't fetch the subtitles that were asked for; the video was saved without them.
     public private(set) var subtitlesMissing = false
+    /// The subtitles couldn't be embedded, but a second try saved them as a file next to the video.
+    public private(set) var subtitlesSavedSeparately = false
+    /// Which automatic retry is waiting or starting (1 for the first), or nil when there's none.
+    public private(set) var automaticRetry: Int?
+    /// The download failed with no connection and is waiting for one to try again.
+    public private(set) var waitingForNetwork = false
+    /// Paused by Downstream because the download folder is gone (a drive was unplugged).
+    public private(set) var folderUnavailable = false
+    /// Playlist items that failed while others were saved.
+    public private(set) var failedItems = 0
+
+    /// How long to wait before each automatic retry of a temporary failure. Its count is the number of retries.
+    nonisolated static let defaultRetryDelays: [Duration] = [.seconds(5), .seconds(30), .seconds(120)]
+    var retryDelays = DownloadJob.defaultRetryDelays
+    /// Whether the Mac has a network connection. `DownloadManager` supplies it.
+    var isOnline: @MainActor () -> Bool = { true }
+    /// While offline, a waiting download still tries this often, in case the system is wrong about the network.
+    var offlineRetryInterval: Duration = .seconds(60)
+    /// A download that has reported progress and then prints nothing for this long is restarted.
+    var stallLimit: Duration = .seconds(300)
+    /// How long after the video is saved the second try for refused subtitles starts.
+    var subtitleRetryDelay: Duration = .seconds(15)
+    /// A download doesn't start with less free space than this.
+    var minimumFreeBytes: Int64 = 100_000_000
 
     private var process: RunningProcess?
+    private var lastOutput = ContinuousClock.now
+    private var stalled = false
+    private var errorCount = 0
     private var stopRequest: StopRequest?
     private var lastError: String?
     /// When this attempt first started. Cleanup only deletes files written since then.
@@ -74,7 +101,8 @@ public final class DownloadJob: Identifiable {
         self.createdAt = Date()
     }
 
-    /// Brings back a download saved by `pendingSnapshot`, paused. Resuming continues from its partial files.
+    /// Brings back a download saved by `pendingSnapshot`: paused (resuming continues from its partial files),
+    /// or failed with its message and log.
     public init(restoring saved: PendingDownload, tools: DownloadTools) {
         url = saved.url
         options = saved.options
@@ -83,20 +111,28 @@ public final class DownloadJob: Identifiable {
         title = saved.title
         thumbnailURL = saved.thumbnailURL
         createdAt = saved.createdAt
-        state = .paused
+        if let failure = saved.failure {
+            state = .failed(failure)
+            log = saved.log ?? []
+        } else {
+            state = .paused
+        }
         firstStarted = saved.startedAt
         writtenFiles = Set(saved.writtenFiles)
         lastProgress = saved.lastProgress.map { DownloadProgress(downloadedBytes: $0.downloadedBytes, totalBytes: $0.totalBytes) }
     }
 
-    /// What to save so this download can be restored after a relaunch, or nil once it's finished.
+    /// What to save so this download can be restored after a relaunch, or nil once it's completed or cancelled.
+    /// A failed download is kept, with its log, so it can still be read and retried.
     public var pendingSnapshot: PendingDownload? {
-        guard !isFinished else { return nil }
+        var failure: String?
+        if case .failed(let message) = state { failure = message } else if isFinished { return nil }
         return PendingDownload(
             url: url, title: title, thumbnailURL: thumbnailURL, options: options,
             outputDirectory: context.outputDirectory, createdAt: createdAt,
             startedAt: firstStarted, writtenFiles: writtenFiles.sorted(),
-            lastProgress: lastProgress.map { .init(downloadedBytes: $0.downloadedBytes, totalBytes: $0.totalBytes) })
+            lastProgress: lastProgress.map { .init(downloadedBytes: $0.downloadedBytes, totalBytes: $0.totalBytes) },
+            failure: failure, log: failure == nil ? nil : log)
     }
 
     /// yt-dlp is running for this job.
@@ -155,7 +191,9 @@ public final class DownloadJob: Identifiable {
 
     /// Paused → queued.
     func resume() {
-        if state == .paused { state = .queued }
+        guard state == .paused else { return }
+        folderUnavailable = false
+        state = .queued
     }
 
     /// Failed or cancelled → queued, starting over. Partly downloaded files left by a failure are reused.
@@ -166,6 +204,8 @@ public final class DownloadJob: Identifiable {
         lastProgress = nil
         lastError = nil
         subtitlesMissing = false
+        subtitlesSavedSeparately = false
+        failedItems = 0
         log = []
         state = .queued
     }
@@ -190,47 +230,213 @@ public final class DownloadJob: Identifiable {
     // MARK: - Running
 
     /// Runs the download until it completes, fails, or is paused or cancelled. Only starts a queued job.
+    ///
+    /// A failure isn't final straight away:
+    /// - with the download folder gone, the job pauses instead (resuming tries again);
+    /// - with no network, it waits for one, however long that takes;
+    /// - if it looks temporary (see `isTemporary`) or the download stalled, it's retried after each of `retryDelays`.
     func run(starter: ProcessStarter) async {
         guard state == .queued else { return }
-        state = .downloading(nil)
         stopRequest = nil
-        if firstStarted == nil { firstStarted = Date() }
-
-        do {
-            let arguments = try ArgumentBuilder.downloadArguments(options, context: context)
-            process = try starter(ytDlp, arguments)
-        } catch {
-            state = .failed(String(describing: error))
+        guard folderIsAvailable else {
+            folderUnavailable = true
+            state = .paused
             return
         }
-
-        do {
-            for try await line in process!.lines {
-                handle(ProgressParser.parse(line), raw: line.text)
-            }
-            if let file = savedFiles.last {
-                savedFileSize = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value
-                state = .completed(file)
-            } else {
-                state = .failed(String(localized: "yt-dlp finished without saving a file."))
-            }
-        } catch ProcessError.cancelled {
-            if stopRequest == .pause {
-                state = .paused
-            } else {
-                deletePartialFiles()
-                state = .cancelled
-            }
-        } catch ProcessError.failed(_, let stderrTail) {
-            state = .failed(lastError ?? MetadataFetcher.errorMessage(from: stderrTail))
-        } catch {
-            state = .failed(String(describing: error))
+        if let free = freeBytes, free < minimumFreeBytes {
+            state = .failed(String(localized: "The disk is almost full (\(DownloadFormatting.bytes(free)) free). Free up some space, then try again."))
+            return
         }
-        process = nil
+        if firstStarted == nil { firstStarted = Date() }
+
+        var retries = 0
+        while true {
+            state = .downloading(nil)
+            let outcome = await attempt(starter: starter)
+            guard case .failed(let message) = outcome, stopRequest == nil else {
+                state = outcome
+                break
+            }
+            guard folderIsAvailable else {
+                folderUnavailable = true
+                state = .paused
+                break
+            }
+            let offline = !isOnline()
+            guard offline || (retries < retryDelays.count && (stalled || Self.isTemporary(message))) else {
+                state = finalState(afterFailure: message)
+                break
+            }
+
+            lastError = nil
+            state = .downloading(nil)
+            if offline {
+                waitingForNetwork = true
+                appendLog("Downstream: no network; waiting for it to come back.")
+                await wait(offlineRetryInterval) { self.isOnline() }
+                waitingForNetwork = false
+            } else {
+                retries += 1
+                automaticRetry = retries
+                appendLog("Downstream: that looks temporary; trying again (\(retries) of \(retryDelays.count)).")
+                await wait(retryDelays[retries - 1])
+            }
+            if let stopRequest {
+                if stopRequest == .pause {
+                    state = .paused
+                } else {
+                    deletePartialFiles()
+                    state = .cancelled
+                }
+                break
+            }
+        }
+        automaticRetry = nil
+
+        if case .completed(let file) = state, subtitlesMissing, !options.downloadPlaylist {
+            await retrySubtitles(starter: starter)
+            state = .completed(file)
+        }
         stopRequest = nil
     }
 
+    /// What a failure that won't be retried ends as. A playlist that saved some of its items is complete,
+    /// with the rest counted in `failedItems`: its files are there, and running it again skips them.
+    private func finalState(afterFailure message: String) -> State {
+        if options.downloadPlaylist, let file = savedFiles.last {
+            failedItems = max(1, errorCount)
+            savedFileSize = Self.size(of: file)
+            return .completed(file)
+        }
+        return .failed(DownloadFormatting.failure(message))
+    }
+
+    /// Waits for `duration`, or less if `finished` turns true or the user pauses or cancels.
+    private func wait(_ duration: Duration, until finished: () -> Bool = { false }) async {
+        let end = ContinuousClock.now + duration
+        while ContinuousClock.now < end, stopRequest == nil, !finished() {
+            try? await Task.sleep(for: min(.milliseconds(200), end - ContinuousClock.now))
+        }
+    }
+
+    /// The download folder exists, creating it if it can be. False when its drive is unplugged.
+    private var folderIsAvailable: Bool {
+        let folder = context.outputDirectory
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private var freeBytes: Int64? {
+        (try? context.outputDirectory.resourceValues(forKeys: [.volumeAvailableCapacityKey]))?
+            .volumeAvailableCapacity.map(Int64.init)
+    }
+
+    private static func size(of file: URL) -> Int64? {
+        (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value
+    }
+
+    /// One run of yt-dlp, and the state it ended in.
+    private func attempt(starter: ProcessStarter) async -> State {
+        let running: RunningProcess
+        do {
+            let arguments = try ArgumentBuilder.downloadArguments(options, context: context)
+            running = try starter(ytDlp, arguments)
+        } catch {
+            return .failed(String(describing: error))
+        }
+        process = running
+        errorCount = 0
+        stalled = false
+        lastOutput = .now
+        let watchdog = stallWatchdog(for: running)
+        defer {
+            watchdog.cancel()
+            process = nil
+        }
+
+        do {
+            for try await line in running.lines {
+                handle(ProgressParser.parse(line), raw: line.text)
+            }
+            guard let file = savedFiles.last else {
+                return .failed(String(localized: "yt-dlp finished without saving a file."))
+            }
+            savedFileSize = Self.size(of: file)
+            return .completed(file)
+        } catch ProcessError.cancelled {
+            if stalled { return .failed(String(localized: "The download stopped making progress.")) }
+            if stopRequest == .pause { return .paused }
+            deletePartialFiles()
+            return .cancelled
+        } catch ProcessError.failed(_, let stderrTail) {
+            return .failed(lastError ?? MetadataFetcher.errorMessage(from: stderrTail))
+        } catch {
+            return .failed(String(describing: error))
+        }
+    }
+
+    /// Stops yt-dlp when a download that was reporting progress goes silent for `stallLimit`.
+    /// Only then: starting up, converting, and aria2 (which reports nothing) are quiet for good reasons.
+    private func stallWatchdog(for running: RunningProcess) -> Task<Void, Never> {
+        Task { [weak self, interval = min(stallLimit / 4, .seconds(15))] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard let self, !Task.isCancelled else { return }
+                guard case .downloading(.some) = state, stopRequest == nil,
+                      ContinuousClock.now - lastOutput > stallLimit else { continue }
+                stalled = true
+                appendLog("Downstream: no progress for a while; restarting the download.")
+                running.cancel()
+                return
+            }
+        }
+    }
+
+    /// A second try for subtitles yt-dlp was refused (the video is already saved without them). They can't be
+    /// embedded after the fact, so they're saved as a file next to the video, where players pick them up.
+    private func retrySubtitles(starter: ProcessStarter) async {
+        state = .processing(String(localized: "Getting subtitles"))
+        await wait(subtitleRetryDelay)
+        guard stopRequest == nil,
+              let arguments = try? ArgumentBuilder.subtitleArguments(options, context: context),
+              let running = try? starter(ytDlp, arguments) else { return }
+        process = running
+        defer { process = nil }
+
+        let marker = "[info] Writing video subtitles to: "
+        var written: [String] = []
+        do {
+            for try await line in running.lines {
+                if line.text.hasPrefix(marker) { written.append(String(line.text.dropFirst(marker.count))) }
+                appendLog(line.text)
+            }
+        } catch {
+            return
+        }
+        let folder = context.outputDirectory
+        if written.contains(where: { FileManager.default.fileExists(atPath: URL(fileURLWithPath: $0, relativeTo: folder).path) }) {
+            subtitlesMissing = false
+            subtitlesSavedSeparately = true
+        }
+    }
+
+    /// Whether a yt-dlp error is worth trying again by itself: the site throttling or failing (429, 5xx)
+    /// or the connection dropping. Anything else (unavailable, private, sign-in) needs the user.
+    nonisolated static func isTemporary(_ message: String) -> Bool {
+        let text = message.lowercased()
+        let signs = [
+            "http error 429", "too many requests",
+            "http error 500", "http error 502", "http error 503", "http error 504",
+            "timed out", "connection reset", "connection aborted", "remote end closed connection",
+            "network is unreachable", "network is down", "nodename nor servname", "failed to resolve",
+            "temporary failure in name resolution", "incompleteread",
+        ]
+        return signs.contains(where: text.contains)
+    }
+
     private func handle(_ event: ProgressEvent, raw: String) {
+        lastOutput = .now
         switch event {
         case .downloading(let progress):
             if let file = progress.filename { writtenFiles.insert(file) }
@@ -249,6 +455,7 @@ public final class DownloadJob: Identifiable {
             if !savedFiles.contains(file) { savedFiles.append(file) }
         case .error(let message):
             lastError = message
+            errorCount += 1
         case .warning(let message):
             if message.hasPrefix("Unable to download video subtitles") { subtitlesMissing = true }
         case .log:

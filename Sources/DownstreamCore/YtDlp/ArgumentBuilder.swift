@@ -74,6 +74,10 @@ public enum ArgumentBuilder {
             "--no-mtime",
             // Without this, a fast download prints hundreds of progress lines a second, each one a UI update.
             "--progress-delta", "0.25",
+            // yt-dlp retries a dropped connection or fragment 10 times, but back to back. Waiting 1 s, 2 s, 4 s…
+            // (up to 20 s) between tries gives a throttling site or a flaky network time to recover.
+            "--retry-sleep", "exp=1:20",
+            "--retry-sleep", "fragment:exp=1:20",
             "--progress-template", "download:\(downloadProgressPrefix)%(progress)j",
             "--progress-template", "postprocess:\(postprocessProgressPrefix)%(progress)j",
             "--print", "after_move:\(finalFilePrefix)%(filepath)s",
@@ -119,6 +123,25 @@ public enum ArgumentBuilder {
 
         args += try splitArguments(options.extraArguments)
         // Everything after `--` is a URL, even if it starts with a dash.
+        args += ["--", context.url.absoluteString]
+        return args
+    }
+
+    /// Arguments that fetch only the subtitles of a download, as files next to where its video goes.
+    /// For the second try after yt-dlp was refused them (see `DownloadJob`).
+    public static func subtitleArguments(_ options: DownloadOptions, context: DownloadContext) throws -> [String] {
+        guard validURL(context.url.absoluteString) != nil else { throw ArgumentError.invalidURL }
+        try validate(options)
+        var args = [
+            "--ignore-config", "--color", "never", "--skip-download", "--no-playlist",
+            "--paths", context.outputDirectory.path,
+            "--output", options.filenameTemplate,
+            "--sub-langs", (options.subtitles?.languages ?? []).joined(separator: ","),
+            "--write-subs",
+        ]
+        if options.restrictFilenames { args.append("--restrict-filenames") }
+        if options.subtitles?.includeAutomatic == true { args.append("--write-auto-subs") }
+        args += cookieArguments(options.cookies)
         args += ["--", context.url.absoluteString]
         return args
     }

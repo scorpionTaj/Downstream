@@ -39,6 +39,39 @@ public enum DownloadFormatting {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
+    /// What to tell the user when yt-dlp fails with `message`: a plain explanation and what to do for the
+    /// common cases, yt-dlp's own words otherwise. (Those stay in the download's log either way.)
+    public static func failure(_ message: String) -> String {
+        let text = message.lowercased()
+        func has(_ signs: String...) -> Bool { signs.contains(where: text.contains) }
+        if has("nodename nor servname", "failed to resolve", "network is unreachable", "network is down",
+               "temporary failure in name resolution") {
+            return String(localized: "No internet connection.")
+        }
+        if has("sign in", "log in", "login required", "--cookies") {
+            return String(localized: "This site wants you signed in. Choose your browser under Cookies in the download's options, then try again.")
+        }
+        if has("http error 429", "too many requests") {
+            return String(localized: "The site is refusing requests for now. Try again later.")
+        }
+        if has("in your country", "geo-restricted", "geo restricted") {
+            return String(localized: "This isn't available in your country.")
+        }
+        if has("video unavailable", "private video", "has been removed") {
+            return String(localized: "This video is unavailable or private.")
+        }
+        if has("no space left") {
+            return String(localized: "The disk is full.")
+        }
+        if has("unsupported url") {
+            return String(localized: "This link isn't supported.")
+        }
+        if has("unable to extract", "nsig extraction failed", "requested format is not available") {
+            return String(localized: "yt-dlp couldn't read this site. Update yt-dlp (Downstream › Update yt-dlp Now), then try again.")
+        }
+        return message
+    }
+
     /// The status line under a download's title.
     @MainActor
     public static func status(of job: DownloadJob) -> String {
@@ -46,10 +79,15 @@ public enum DownloadFormatting {
         case .queued:
             return String(localized: "Queued")
         case .paused:
+            if job.folderUnavailable { return String(localized: "Paused · the download folder isn't available") }
             guard let progress = job.lastProgress else { return String(localized: "Paused") }
             if let total = progress.totalBytes { return String(localized: "Paused · \(bytes(progress.downloadedBytes)) of \(bytes(total))") }
             return String(localized: "Paused · \(bytes(progress.downloadedBytes))")
         case .downloading(nil):
+            if job.waitingForNetwork { return String(localized: "Waiting for the network…") }
+            if let retry = job.automaticRetry {
+                return String(localized: "Trying again (\(retry) of \(job.retryDelays.count))…")
+            }
             return job.options.aria2Connections != nil ? String(localized: "Downloading with aria2…") : String(localized: "Starting…")
         case .downloading(let progress?):
             var parts: [String] = []
@@ -68,7 +106,9 @@ public enum DownloadFormatting {
             var parts = [file.pathExtension.uppercased()]
             if let size = job.savedFileSize { parts.append(bytes(size)) }
             if job.savedFiles.count > 1 { parts.insert(String(localized: "\(job.savedFiles.count) files"), at: 0) }
+            if job.failedItems > 0 { parts.append(String(localized: "\(job.failedItems) failed")) }
             if job.subtitlesMissing { parts.append(String(localized: "Subtitles unavailable")) }
+            if job.subtitlesSavedSeparately { parts.append(String(localized: "Subtitles in a separate file")) }
             return parts.joined(separator: " · ")
         case .failed(let message):
             return message
