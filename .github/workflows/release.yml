@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@main
 
       - name: Version
         run: |
@@ -51,7 +51,7 @@ jobs:
       - name: Build the DMG
         run: scripts/release.sh
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@main
         with:
           name: Downstream-${{ env.VERSION }}
           path: |
