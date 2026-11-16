@@ -256,10 +256,14 @@ func localChecks() async {
 
     await suite("local: unplugging the drive pauses the download; plugging it back lets it finish") {
         let manager = DownloadManager()
-        let job = add(manager, link("slow/drive.mp4"), to: volume.appendingPathComponent("Videos"))
+        // Slow enough (over half a minute) that unmounting, which can take seconds, lands mid-download.
+        let job = add(manager, link("crawl/drive.mp4"), to: volume.appendingPathComponent("Videos"))
         job.minimumFreeBytes = 0
-        try await waitFor(30) { (job.lastProgress?.downloadedBytes ?? 0) > 200_000 }
+        try await waitFor(30) { (job.lastProgress?.downloadedBytes ?? 0) > 100_000 }
         await detach()
+        try await waitFor(20) { !FileManager.default.fileExists(atPath: volume.path) }
+        expect(!FileManager.default.fileExists(atPath: volume.path), "the volume is unmounted")
+        expect(!job.isFinished, "the download was still running when the drive went away, got \(describe(job))")
         try await waitFor(60) { job.state == .paused }
         expectEqual(job.pauseReason, .folderUnavailable)
         expectEqual(DownloadFormatting.status(of: job), "Paused · the download folder isn't available")

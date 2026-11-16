@@ -2,6 +2,7 @@
 # Prints "PORT <n>" once listening. Paths:
 #   /v/<name>.mp4            the media file (Range supported)
 #   /slow/<name>.mp4         the same, at ~150 kB/s
+#   /crawl/<name>.mp4        the same, at ~30 kB/s
 #   /busy/<n>/<name>.mp4     answers 429 to the first <n> downloads, then serves
 #   /stall/<name>.mp4        the first download sends a little and then hangs; later ones serve
 #                            (the second GET: yt-dlp's first one only looks at what the link is)
@@ -73,9 +74,10 @@ class Handler(BaseHTTPRequestHandler):
             if kind == 'stall' and self.count(self.path) == 2:
                 self.wfile.write(data[:65536]); self.wfile.flush()
                 time.sleep(3600)
-            elif kind == 'slow':
-                for i in range(0, len(data), 15000):
-                    self.wfile.write(data[i:i + 15000]); self.wfile.flush()
+            elif kind in ('slow', 'crawl'):
+                step = 15000 if kind == 'slow' else 3000
+                for i in range(0, len(data), step):
+                    self.wfile.write(data[i:i + step]); self.wfile.flush()
                     time.sleep(0.1)
             else:
                 self.wfile.write(data)
