@@ -68,6 +68,7 @@ T = {
 "Best available": ("Meilleure disponible", "أفضل جودة متاحة"),
 "Format": ("Format", "الصيغة"),
 "Subtitles": ("Sous-titres", "الترجمة"),
+"Subtitles unavailable": ("Sous-titres indisponibles", "الترجمة غير متاحة"),
 "Embed subtitles": ("Intégrer les sous-titres", "تضمين الترجمة"),
 "Language": ("Langue", "اللغة"),
 " (automatic)": (" (automatiques)", " (تلقائية)"),
