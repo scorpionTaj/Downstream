@@ -2,6 +2,11 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.2.4] - 2026-11-16
+
+### Fixed
+- A video no longer fails when YouTube refuses the subtitle request ("HTTP Error 429: Too Many Requests"). It downloads without subtitles and its row says "Subtitles unavailable".
+
 ## [1.2.3] - 2026-11-06
 
 ### Improved

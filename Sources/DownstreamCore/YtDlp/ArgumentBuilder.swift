@@ -147,6 +147,9 @@ public enum ArgumentBuilder {
             // `--embed-subs` fetches the subtitles itself and deletes the files once they're inside the video.
             // Adding `--write-subs` would leave a stray .vtt next to it, so it's only used to keep them as files.
             args.append(subtitles.embed ? "--embed-subs" : "--write-subs")
+            // Subtitles are an extra: without this, a refused subtitle request (YouTube answers 429 a lot)
+            // fails the whole video. With it yt-dlp warns and carries on; `DownloadJob` shows the warning.
+            args.append("--ignore-errors")
         }
         return args
     }

@@ -68,6 +68,7 @@ public enum DownloadFormatting {
             var parts = [file.pathExtension.uppercased()]
             if let size = job.savedFileSize { parts.append(bytes(size)) }
             if job.savedFiles.count > 1 { parts.insert(String(localized: "\(job.savedFiles.count) files"), at: 0) }
+            if job.subtitlesMissing { parts.append(String(localized: "Subtitles unavailable")) }
             return parts.joined(separator: " · ")
         case .failed(let message):
             return message

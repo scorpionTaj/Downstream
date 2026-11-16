@@ -55,6 +55,13 @@ func downloadJobChecks() async {
         expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
     }
 
+    await suite("DownloadJob: refused subtitles don't fail the download, and are mentioned") {
+        let job = makeJob()
+        await job.run(starter: script("echo \"WARNING: Unable to download video subtitles for 'ar': HTTP Error 429: Too Many Requests\" >&2; echo '@@F /tmp/ok.mp4'"))
+        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
+        expectEqual(DownloadFormatting.status(of: job), "MP4 · Subtitles unavailable")
+    }
+
     await suite("DownloadJob: success without a file is a failure") {
         let job = makeJob()
         await job.run(starter: script("echo hello"))

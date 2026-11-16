@@ -188,6 +188,7 @@ func argumentBuilderChecks() async {
         expectEqual(value(after: "--sub-langs", in: args), "en,de")
         expect(args.contains("--write-auto-subs") && args.contains("--embed-subs"), "subtitle flags")
         expect(!args.contains("--write-subs"), "embedding doesn't also write subtitle files (it would leave a .vtt behind)")
+        expect(args.contains("--ignore-errors"), "a refused subtitle request doesn't fail the video")
         expectEqual(value(after: "--sponsorblock-remove", in: args), "sponsor,selfpromo,music_offtopic")
         expectEqual(value(after: "--cookies-from-browser", in: args), "firefox")
         expectEqual(value(after: "--downloader", in: args), "/opt/homebrew/bin/aria2c")

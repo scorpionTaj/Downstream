@@ -50,6 +50,8 @@ public final class DownloadJob: Identifiable {
     public private(set) var savedFileSize: Int64?
     /// yt-dlp's output, minus progress lines, newest last. Shown when a download fails.
     public private(set) var log: [String] = []
+    /// yt-dlp couldn't fetch the subtitles that were asked for; the video was saved without them.
+    public private(set) var subtitlesMissing = false
 
     private var process: RunningProcess?
     private var stopRequest: StopRequest?
@@ -163,6 +165,7 @@ public final class DownloadJob: Identifiable {
         savedFileSize = nil
         lastProgress = nil
         lastError = nil
+        subtitlesMissing = false
         log = []
         state = .queued
     }
@@ -246,7 +249,9 @@ public final class DownloadJob: Identifiable {
             if !savedFiles.contains(file) { savedFiles.append(file) }
         case .error(let message):
             lastError = message
-        case .warning, .log:
+        case .warning(let message):
+            if message.hasPrefix("Unable to download video subtitles") { subtitlesMissing = true }
+        case .log:
             break
         }
         appendLog(raw)
