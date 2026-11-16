@@ -92,6 +92,15 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: "resumeOnLaunch") }
     }
 
+    /// How downloads that fail for a temporary reason are tried again. Default: 3 times, starting after 5 seconds.
+    static var retryPolicy: RetryPolicy {
+        get {
+            UserDefaults.standard.data(forKey: "retryPolicy")
+                .flatMap { try? JSONDecoder().decode(RetryPolicy.self, from: $0) } ?? .default
+        }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "retryPolicy") }
+    }
+
     /// Check GitHub for a newer Downstream once a day. Default on.
     static var checkForAppUpdates: Bool {
         get { flag("checkForAppUpdates", default: true) }

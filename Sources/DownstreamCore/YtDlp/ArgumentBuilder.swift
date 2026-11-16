@@ -40,6 +40,8 @@ public enum ArgumentBuilder {
     public static let downloadProgressPrefix = "@@P "
     public static let postprocessProgressPrefix = "@@Q "
     public static let finalFilePrefix = "@@F "
+    public static let destinationPrefix = "@@D "
+    public static let itemURLPrefix = "@@U "
 
     /// A URL Downstream will hand to yt-dlp: http or https with a host. Surrounding whitespace is ignored.
     public static func validURL(_ string: String) -> URL? {
@@ -80,6 +82,9 @@ public enum ArgumentBuilder {
             "--retry-sleep", "fragment:exp=1:20",
             "--progress-template", "download:\(downloadProgressPrefix)%(progress)j",
             "--progress-template", "postprocess:\(postprocessProgressPrefix)%(progress)j",
+            "--print", "before_dl:\(destinationPrefix)%(n_entries|)s|%(filename)s",
+            // In this order: the page comes first, so it's known when the file arrives.
+            "--print", "after_move:\(itemURLPrefix)%(webpage_url)s",
             "--print", "after_move:\(finalFilePrefix)%(filepath)s",
             "--ffmpeg-location", context.ffmpeg.path,
             "--paths", context.outputDirectory.path,
@@ -108,7 +113,10 @@ public enum ArgumentBuilder {
                 "--downloader", aria2c.path,
                 // aria2c can't fetch HLS/DASH fragments well; keep yt-dlp's own downloader for those.
                 "--downloader", "dash,m3u8:native",
-                "--downloader-args", "aria2c:-x \(connections) -s \(connections) -k 1M",
+                // No write cache: aria2c prints nothing useful through a pipe and, with the cache, doesn't touch
+                // its file for minutes either. Writing as data arrives is the only sign that it's alive, which
+                // `DownloadJob` watches to tell a slow transfer from a stalled one.
+                "--downloader-args", "aria2c:-x \(connections) -s \(connections) -k 1M --disk-cache=0",
             ]
         }
 
@@ -127,23 +135,19 @@ public enum ArgumentBuilder {
         return args
     }
 
-    /// Arguments that fetch only the subtitles of a download, as files next to where its video goes.
-    /// For the second try after yt-dlp was refused them (see `DownloadJob`).
-    public static func subtitleArguments(_ options: DownloadOptions, context: DownloadContext) throws -> [String] {
-        guard validURL(context.url.absoluteString) != nil else { throw ArgumentError.invalidURL }
-        try validate(options)
+    /// Arguments that fetch only the subtitles in `languages` for the video at `url`, into `directory` as
+    /// `subtitles.<language>.<extension>`. For the later tries after yt-dlp was refused them (see `DownloadJob`).
+    public static func subtitleArguments(_ options: DownloadOptions, url: String, languages: [String], directory: URL) -> [String] {
         var args = [
             "--ignore-config", "--color", "never", "--skip-download", "--no-playlist",
-            "--paths", context.outputDirectory.path,
-            "--output", options.filenameTemplate,
-            "--sub-langs", (options.subtitles?.languages ?? []).joined(separator: ","),
+            "--paths", directory.path,
+            "--output", "subtitles.%(ext)s",
+            "--sub-langs", languages.joined(separator: ","),
             "--write-subs",
         ]
-        if options.restrictFilenames { args.append("--restrict-filenames") }
         if options.subtitles?.includeAutomatic == true { args.append("--write-auto-subs") }
         args += cookieArguments(options.cookies)
-        args += ["--", context.url.absoluteString]
-        return args
+        return args + ["--", url]
     }
 
     // MARK: - Pieces

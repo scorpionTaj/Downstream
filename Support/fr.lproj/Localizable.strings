@@ -8,17 +8,21 @@
 "%@ of %@" = "%@ sur %@";
 "%lld connections" = "%lld connexions";
 "%lld downloading" = "%lld en cours";
-"%lld failed" = "%lld en échec";
 "%lld files" = "%lld fichiers";
 "%lld hr %lld min left" = "%lld h %lld min restantes";
 "%lld hr left" = "%lld h restantes";
 "%lld min left" = "%lld min restantes";
+"%lld of %lld items couldn't be downloaded." = "%lld éléments sur %lld n’ont pas pu être téléchargés.";
+"%lld of %lld saved" = "%lld sur %lld enregistrés";
 "%lld of %lld videos selected" = "%lld vidéos sélectionnées sur %lld";
 "%lld paused" = "%lld en pause";
 "%lld percent" = "%lld pour cent";
 "%lld queued" = "%lld en attente";
 "%lld s left" = "%lld s restantes";
 "(version unknown)" = "(version inconnue)";
+"1 minute" = "1 minute";
+"15 seconds" = "15 secondes";
+"5 seconds" = "5 secondes";
 "A new version of Downstream is ready" = "Une nouvelle version de Downstream est prête";
 "About" = "À propos";
 "Add Download…" = "Ajouter un téléchargement…";
@@ -120,6 +124,7 @@
 "Downstream updates" = "Mises à jour de Downstream";
 "Downstream uses yt-dlp and ffmpeg from Homebrew to download and convert media." = "Downstream utilise yt-dlp et ffmpeg de Homebrew pour télécharger et convertir les médias.";
 "Downstream uses yt-dlp and ffmpeg from Homebrew." = "Downstream utilise yt-dlp et ffmpeg de Homebrew.";
+"Each wait is five times longer than the one before, up to 10 minutes." = "Chaque attente est cinq fois plus longue que la précédente, jusqu’à 10 minutes.";
 "Edited" = "Modifié";
 "Embed" = "Intégrer";
 "Embed chapters" = "Intégrer les chapitres";
@@ -141,6 +146,7 @@
 "Finding SponsorBlock segments" = "Recherche des segments SponsorBlock";
 "Finished downloads appear here, even after you clear them from the list." = "Les téléchargements terminés apparaissent ici, même après les avoir retirés de la liste.";
 "Finishing up" = "Finalisation";
+"First wait" = "Première attente";
 "Format" = "Format";
 "Free, open source and private: everything runs on your Mac" = "Gratuit, open source et privé : tout se passe sur votre Mac";
 "From %@" = "Depuis %@";
@@ -148,7 +154,7 @@
 "General" = "Général";
 "Get Homebrew" = "Obtenir Homebrew";
 "Get started" = "Commencer";
-"Getting subtitles" = "Récupération des sous-titres";
+"Getting subtitles…" = "Récupération des sous-titres…";
 "Getting video info…" = "Récupération des informations…";
 "GitHub is limiting requests right now. Try again later." = "GitHub limite les requêtes pour le moment. Réessayez plus tard.";
 "Help" = "Aide";
@@ -213,6 +219,7 @@
 "Notify when a download finishes while Downstream is in the background" = "Notifier la fin d’un téléchargement quand Downstream est en arrière-plan";
 "Off" = "Désactivé";
 "Only download content you own or have permission to download, and follow each site's terms." = "Ne téléchargez que des contenus qui vous appartiennent ou que vous avez le droit de télécharger, et respectez les conditions de chaque site.";
+"Only for temporary problems, like the site refusing requests or the connection dropping." = "Uniquement pour les problèmes temporaires, comme un site qui refuse les requêtes ou une connexion coupée.";
 "Open" = "Ouvrir";
 "Open Downloads Folder" = "Ouvrir le dossier des téléchargements";
 "Open Downstream" = "Ouvrir Downstream";
@@ -231,6 +238,7 @@
 "Paused" = "En pause";
 "Paused · %@" = "En pause · %@";
 "Paused · %@ of %@" = "En pause · %@ sur %@";
+"Paused · not enough disk space" = "En pause · espace disque insuffisant";
 "Paused · the download folder isn't available" = "En pause · le dossier de téléchargement n’est pas disponible";
 "Pick video or audio, quality and format, then Download" = "Choisissez vidéo ou audio, qualité et format, puis Télécharger";
 "Playlist · %lld videos" = "Playlist · %lld vidéos";
@@ -307,7 +315,6 @@
 "Template" = "Modèle";
 "The disk image contains a different app (%@)." = "L’image disque contient une autre app (%@).";
 "The disk image doesn't contain Downstream." = "L’image disque ne contient pas Downstream.";
-"The disk is almost full (%@ free). Free up some space, then try again." = "Le disque est presque plein (%@ disponibles). Libérez de l’espace, puis réessayez.";
 "The disk is full." = "Le disque est plein.";
 "The download is damaged (its checksum doesn't match). Try again." = "Le téléchargement est endommagé (somme de contrôle incorrecte). Réessayez.";
 "The download stopped making progress." = "Le téléchargement n’avançait plus.";
@@ -330,6 +337,7 @@
 "Thumbnail" = "Miniature";
 "Tools" = "Outils";
 "Try again" = "Réessayer";
+"Try again by itself: %lld times" = "Réessayer automatiquement : %lld fois";
 "Trying again (%lld of %lld)…" = "Nouvel essai (%lld sur %lld)…";
 "Type" = "Type";
 "Unknown version" = "Version inconnue";
@@ -361,6 +369,7 @@
 "What's New" = "Nouveautés";
 "What's new" = "Nouveautés";
 "What's new in Downstream" = "Nouveautés de Downstream";
+"When a download fails" = "Quand un téléchargement échoue";
 "When you quit (⌘Q)" = "Quand vous quittez (⌘Q)";
 "Where and how many" = "Où et combien";
 "You have Downstream %@." = "Vous avez Downstream %@.";

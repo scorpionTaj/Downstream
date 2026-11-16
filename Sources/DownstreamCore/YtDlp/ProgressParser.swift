@@ -42,6 +42,11 @@ public enum ProgressEvent: Sendable, Equatable {
     /// A post-processing step started (merging, converting, embedding…). `name` is yt-dlp's postprocessor name.
     case postprocessing(name: String)
     case postprocessingFinished(name: String)
+    /// The file yt-dlp is about to download into (its final name, before any `.part` or format suffix),
+    /// and for a playlist how many items it covers.
+    case destination(filename: String, playlistCount: Int?)
+    /// The page of the item that was just saved; its `finalFile` follows.
+    case itemURL(String)
     /// The final file, after every step and move.
     case finalFile(path: String)
     case warning(String)
@@ -59,6 +64,15 @@ public enum ProgressParser {
         }
         if line.hasPrefix(ArgumentBuilder.postprocessProgressPrefix) {
             return parsePostprocess(json: line.dropFirst(ArgumentBuilder.postprocessProgressPrefix.count)) ?? .log(line)
+        }
+        if line.hasPrefix(ArgumentBuilder.destinationPrefix) {
+            // `@@D 20|Title [id].mp4`; the count is empty for a single video.
+            let rest = line.dropFirst(ArgumentBuilder.destinationPrefix.count)
+            guard let bar = rest.firstIndex(of: "|") else { return .log(line) }
+            return .destination(filename: String(rest[rest.index(after: bar)...]), playlistCount: Int(rest[..<bar]))
+        }
+        if line.hasPrefix(ArgumentBuilder.itemURLPrefix) {
+            return .itemURL(String(line.dropFirst(ArgumentBuilder.itemURLPrefix.count)))
         }
         if line.hasPrefix(ArgumentBuilder.finalFilePrefix) {
             return .finalFile(path: String(line.dropFirst(ArgumentBuilder.finalFilePrefix.count)))

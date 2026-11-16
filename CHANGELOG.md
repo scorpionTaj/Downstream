@@ -2,6 +2,23 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.3.1] - 2026-11-16
+
+### Added
+- Settings › General › "When a download fails": choose how many times a download tries again by itself (0 to 10) and how long the first wait is. Each wait is five times longer than the one before, up to 10 minutes.
+- A playlist where some items failed has a Retry button that fetches only the missing items. Its row says "18 of 20 saved", and History lists the items that couldn't be downloaded under Failed.
+- When the Mac wakes from sleep, downloads that were running start again from what they have.
+
+### Improved
+- A download waiting to try again, or waiting for the network, no longer takes one of the download slots: the next download in the queue runs meanwhile.
+- Subtitles that were refused are tried again 15 seconds, 2 minutes and 10 minutes after the video is saved, for playlists too, and are now put inside the video. They're saved as a separate file only if that isn't possible.
+- Stalled downloads are noticed with aria2 and during conversion too, not only with yt-dlp's own downloader.
+- After a crash, Downstream waits until the yt-dlp left behind is really gone before restoring its download.
+
+### Fixed
+- A disk without enough room pauses the download ("Paused · not enough disk space") instead of failing it — before it starts, as soon as the file turns out bigger than the space left, or if the disk fills up anyway. Resume once there's room.
+- "Paused · the download folder isn't available" is still shown after quitting and reopening Downstream.
+
 ## [1.3.0] - 2026-11-16
 
 ### Added

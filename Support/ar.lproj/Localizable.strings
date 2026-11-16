@@ -8,17 +8,21 @@
 "%@ of %@" = "%@ من %@";
 "%lld connections" = "%lld اتصالات";
 "%lld downloading" = "%lld قيد التنزيل";
-"%lld failed" = "%lld فشلت";
 "%lld files" = "%lld ملفات";
 "%lld hr %lld min left" = "متبقٍ %lld س %lld د";
 "%lld hr left" = "متبقٍ %lld س";
 "%lld min left" = "متبقٍ %lld د";
+"%lld of %lld items couldn't be downloaded." = "تعذّر تنزيل %lld من %lld عناصر.";
+"%lld of %lld saved" = "تم حفظ %lld من %lld";
 "%lld of %lld videos selected" = "تم تحديد %lld من %lld فيديو";
 "%lld paused" = "%lld متوقفة مؤقتًا";
 "%lld percent" = "%lld بالمئة";
 "%lld queued" = "%lld في الانتظار";
 "%lld s left" = "متبقٍ %lld ث";
 "(version unknown)" = "(إصدار غير معروف)";
+"1 minute" = "دقيقة واحدة";
+"15 seconds" = "15 ثانية";
+"5 seconds" = "5 ثوانٍ";
 "A new version of Downstream is ready" = "إصدار جديد من Downstream جاهز";
 "About" = "حول";
 "Add Download…" = "إضافة تنزيل…";
@@ -120,6 +124,7 @@
 "Downstream updates" = "تحديثات Downstream";
 "Downstream uses yt-dlp and ffmpeg from Homebrew to download and convert media." = "يستخدم Downstream الأداتين yt-dlp وffmpeg من Homebrew لتنزيل الوسائط وتحويلها.";
 "Downstream uses yt-dlp and ffmpeg from Homebrew." = "يستخدم Downstream الأداتين yt-dlp وffmpeg من Homebrew.";
+"Each wait is five times longer than the one before, up to 10 minutes." = "كل انتظار أطول بخمس مرات من سابقه، حتى 10 دقائق.";
 "Edited" = "معدَّل";
 "Embed" = "تضمين";
 "Embed chapters" = "تضمين الفصول";
@@ -141,6 +146,7 @@
 "Finding SponsorBlock segments" = "البحث عن مقاطع SponsorBlock";
 "Finished downloads appear here, even after you clear them from the list." = "تظهر التنزيلات المنتهية هنا، حتى بعد مسحها من القائمة.";
 "Finishing up" = "جارٍ الإنهاء";
+"First wait" = "الانتظار الأول";
 "Format" = "الصيغة";
 "Free, open source and private: everything runs on your Mac" = "مجاني ومفتوح المصدر وخاص: كل شيء يعمل على جهاز Mac";
 "From %@" = "من %@";
@@ -148,7 +154,7 @@
 "General" = "عام";
 "Get Homebrew" = "احصل على Homebrew";
 "Get started" = "ابدأ";
-"Getting subtitles" = "جارٍ جلب الترجمة";
+"Getting subtitles…" = "جارٍ جلب الترجمة…";
 "Getting video info…" = "جارٍ جلب معلومات الفيديو…";
 "GitHub is limiting requests right now. Try again later." = "يحدّ GitHub من الطلبات حاليًا. حاول مرة أخرى لاحقًا.";
 "Help" = "المساعدة";
@@ -213,6 +219,7 @@
 "Notify when a download finishes while Downstream is in the background" = "الإشعار عند انتهاء تنزيل أثناء عمل Downstream في الخلفية";
 "Off" = "إيقاف";
 "Only download content you own or have permission to download, and follow each site's terms." = "لا تنزّل إلا المحتوى الذي تملكه أو لديك إذن بتنزيله، والتزم بشروط كل موقع.";
+"Only for temporary problems, like the site refusing requests or the connection dropping." = "فقط للمشكلات المؤقتة، مثل رفض الموقع للطلبات أو انقطاع الاتصال.";
 "Open" = "فتح";
 "Open Downloads Folder" = "فتح مجلد التنزيلات";
 "Open Downstream" = "فتح Downstream";
@@ -231,6 +238,7 @@
 "Paused" = "متوقف مؤقتًا";
 "Paused · %@" = "متوقف مؤقتًا · %@";
 "Paused · %@ of %@" = "متوقف مؤقتًا · %@ من %@";
+"Paused · not enough disk space" = "متوقف مؤقتًا · مساحة القرص غير كافية";
 "Paused · the download folder isn't available" = "متوقف مؤقتًا · مجلد التنزيل غير متاح";
 "Pick video or audio, quality and format, then Download" = "اختر فيديو أو صوتًا والجودة والصيغة، ثم تنزيل";
 "Playlist · %lld videos" = "قائمة تشغيل · %lld فيديو";
@@ -307,7 +315,6 @@
 "Template" = "القالب";
 "The disk image contains a different app (%@)." = "تحتوي صورة القرص على تطبيق مختلف (%@).";
 "The disk image doesn't contain Downstream." = "لا تحتوي صورة القرص على Downstream.";
-"The disk is almost full (%@ free). Free up some space, then try again." = "القرص شبه ممتلئ (%@ متاحة). أفرغ بعض المساحة ثم حاول مرة أخرى.";
 "The disk is full." = "القرص ممتلئ.";
 "The download is damaged (its checksum doesn't match). Try again." = "التنزيل تالف (لا يتطابق المجموع الاختباري). حاول مجددًا.";
 "The download stopped making progress." = "توقف التنزيل عن التقدم.";
@@ -330,6 +337,7 @@
 "Thumbnail" = "الصورة المصغّرة";
 "Tools" = "الأدوات";
 "Try again" = "حاول مجددًا";
+"Try again by itself: %lld times" = "إعادة المحاولة تلقائيًا: %lld مرات";
 "Trying again (%lld of %lld)…" = "إعادة المحاولة (%lld من %lld)…";
 "Type" = "النوع";
 "Unknown version" = "إصدار غير معروف";
@@ -361,6 +369,7 @@
 "What's New" = "ما الجديد";
 "What's new" = "ما الجديد";
 "What's new in Downstream" = "ما الجديد في Downstream";
+"When a download fails" = "عند فشل تنزيل";
 "When you quit (⌘Q)" = "عند الإنهاء (⌘Q)";
 "Where and how many" = "المكان والعدد";
 "You have Downstream %@." = "لديك Downstream %@.";

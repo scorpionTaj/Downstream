@@ -42,6 +42,15 @@ final class SettingsModel {
     var checkForAppUpdates: Bool { didSet { AppSettings.checkForAppUpdates = checkForAppUpdates } }
     var resumeOnLaunch: Bool { didSet { AppSettings.resumeOnLaunch = resumeOnLaunch } }
 
+    var retryPolicy: RetryPolicy {
+        didSet {
+            AppSettings.retryPolicy = retryPolicy
+            onRetryPolicyChanged?(retryPolicy)
+        }
+    }
+
+    var onRetryPolicyChanged: ((RetryPolicy) -> Void)?
+
     var onMaxConcurrentChanged: ((Int) -> Void)?
 
     var quitBehavior: AppSettings.QuitBehavior { didSet { AppSettings.quitBehavior = quitBehavior } }
@@ -69,6 +78,7 @@ final class SettingsModel {
         autoUpdateYtDlp = AppSettings.autoUpdateYtDlp
         checkForAppUpdates = AppSettings.checkForAppUpdates
         resumeOnLaunch = AppSettings.resumeOnLaunch
+        retryPolicy = AppSettings.retryPolicy
         quitBehavior = AppSettings.quitBehavior
         appearance = AppSettings.appearance
         language = AppSettings.language

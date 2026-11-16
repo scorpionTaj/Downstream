@@ -133,7 +133,7 @@ func argumentBuilderChecks() async {
         expectEqual(value(after: "--remux-video", in: args), "mp4")
         expectEqual(value(after: "--paths", in: args), "/Users/me/Downloads")
         expectEqual(value(after: "--ffmpeg-location", in: args), "/opt/homebrew/bin/ffmpeg")
-        expectEqual(value(after: "--print", in: args), "after_move:@@F %(filepath)s")
+        expect(args.contains("after_move:@@F %(filepath)s"), "the final file is printed")
         for flag in ["--newline", "--progress", "--embed-metadata", "--embed-thumbnail", "--embed-chapters", "--no-playlist"] {
             expect(args.contains(flag), "default includes \(flag)")
         }
@@ -190,16 +190,22 @@ func argumentBuilderChecks() async {
         expect(!args.contains("--write-subs"), "embedding doesn't also write subtitle files (it would leave a .vtt behind)")
         expect(args.contains("--ignore-errors"), "a refused subtitle request doesn't fail the video")
         expect(args.contains("fragment:exp=1:20"), "retries wait between tries")
-        let second = try ArgumentBuilder.subtitleArguments(options, context: context)
-        expectEqual(value(after: "--sub-langs", in: second), "en,de")
-        expect(second.contains("--skip-download") && second.contains("--write-subs") && second.contains("--write-auto-subs"),
-               "the second try fetches only the subtitles, as files")
-        expect(!second.contains("--embed-subs") && second.last == context.url.absoluteString, "nothing to embed into")
+        expect(args.contains("before_dl:@@D %(n_entries|)s|%(filename)s"), "the file name is reported before the download")
+        let pageFirst = args.firstIndex(of: "after_move:@@U %(webpage_url)s"), fileNext = args.firstIndex(of: "after_move:@@F %(filepath)s")
+        expect(pageFirst != nil && fileNext != nil && pageFirst! < fileNext!, "an item's page is printed before its file")
+        let later = ArgumentBuilder.subtitleArguments(options, url: "https://example.com/item", languages: ["de"],
+                                                      directory: URL(fileURLWithPath: "/tmp/scratch"))
+        expectEqual(value(after: "--sub-langs", in: later), "de")
+        expectEqual(value(after: "--paths", in: later), "/tmp/scratch")
+        expect(later.contains("--skip-download") && later.contains("--write-subs") && later.contains("--write-auto-subs")
+               && later.contains("--no-playlist"), "a later try fetches only that video's subtitles, as files")
+        expect(!later.contains("--embed-subs") && later.suffix(2) == ["--", "https://example.com/item"], "nothing to embed into")
+        expectEqual(value(after: "--cookies-from-browser", in: later), "firefox")
         expectEqual(value(after: "--sponsorblock-remove", in: args), "sponsor,selfpromo,music_offtopic")
         expectEqual(value(after: "--cookies-from-browser", in: args), "firefox")
         expectEqual(value(after: "--downloader", in: args), "/opt/homebrew/bin/aria2c")
         expect(args.contains("dash,m3u8:native"), "fragments stay on the native downloader")
-        expectEqual(value(after: "--downloader-args", in: args), "aria2c:-x 8 -s 8 -k 1M")
+        expectEqual(value(after: "--downloader-args", in: args), "aria2c:-x 8 -s 8 -k 1M --disk-cache=0")
         expectEqual(value(after: "--limit-rate", in: args), "500K")
         expect(args.contains("--yes-playlist") && !args.contains("--no-playlist"), "playlist mode")
         expectEqual(value(after: "--playlist-items", in: args), "1:5,8")
@@ -285,6 +291,12 @@ func progressParserChecks() async {
         } else {
             expect(false, "first line should be progress")
         }
+    }
+
+    await suite("ProgressParser: destination and item page") {
+        expectEqual(ProgressParser.parse("@@D 20|Title [id].mp4"), .destination(filename: "Title [id].mp4", playlistCount: 20))
+        expectEqual(ProgressParser.parse("@@D |A|B [id].mp4"), .destination(filename: "A|B [id].mp4", playlistCount: nil))
+        expectEqual(ProgressParser.parse("@@U https://example.com/watch?v=1"), .itemURL("https://example.com/watch?v=1"))
     }
 
     await suite("ProgressParser: fragments, estimates, errors and noise") {

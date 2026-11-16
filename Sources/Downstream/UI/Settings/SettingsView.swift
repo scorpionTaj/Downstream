@@ -90,6 +90,22 @@ private struct GeneralSettings: View {
                 }
             }
 
+            TileSection(title: "When a download fails", symbol: "arrow.clockwise.circle.fill", color: Theme.indigo) {
+                Stepper(value: $settings.retryPolicy.count, in: RetryPolicy.countRange) {
+                    Text("Try again by itself: \(settings.retryPolicy.count) times")
+                    Text("Only for temporary problems, like the site refusing requests or the connection dropping.")
+                }
+                Picker("First wait", selection: $settings.retryPolicy.firstWaitSeconds) {
+                    Text("5 seconds").tag(5)
+                    Text("15 seconds").tag(15)
+                    Text("1 minute").tag(60)
+                }
+                .disabled(settings.retryPolicy.count == 0)
+                Text("Each wait is five times longer than the one before, up to 10 minutes.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             TileSection(title: "Notifications", symbol: "bell.badge.fill", color: Theme.purple) {
                 Toggle("Notify when a download finishes while Downstream is in the background", isOn: $settings.notificationsEnabled)
             }

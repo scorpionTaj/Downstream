@@ -46,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             notify(about: job)
         }
         downloads.onQueueChanged = { [weak self] in self?.savePending() }
+        downloads.onSubtitlesRecovered = { [weak self] job in self?.library.updateSubtitles(for: job) }
+        downloads.retryPolicy = AppSettings.retryPolicy
+        settings.onRetryPolicyChanged = { [weak self] in self?.downloads.retryPolicy = $0 }
         tools.downloads = downloads
         addDownload.downloads = downloads
         tools.onRefresh = { [weak self] in
@@ -72,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.downloads.isOnline = online }
         }
         network.start(queue: .global(qos: .utility))
+        // A download running when the Mac went to sleep comes back with a dead connection and expired links.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.downloads.restartAfterWake() }
+        }
         Task { await tools.refresh() }
     }
 

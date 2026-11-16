@@ -77,14 +77,19 @@ public enum DownloadFormatting {
     public static func status(of job: DownloadJob) -> String {
         switch job.state {
         case .queued:
+            if job.waitingForNetwork { return String(localized: "Waiting for the network…") }
+            if let retry = job.automaticRetry { return String(localized: "Trying again (\(retry) of \(job.retryDelays.count))…") }
             return String(localized: "Queued")
         case .paused:
-            if job.folderUnavailable { return String(localized: "Paused · the download folder isn't available") }
+            switch job.pauseReason {
+            case .folderUnavailable: return String(localized: "Paused · the download folder isn't available")
+            case .diskFull: return String(localized: "Paused · not enough disk space")
+            case nil: break
+            }
             guard let progress = job.lastProgress else { return String(localized: "Paused") }
             if let total = progress.totalBytes { return String(localized: "Paused · \(bytes(progress.downloadedBytes)) of \(bytes(total))") }
             return String(localized: "Paused · \(bytes(progress.downloadedBytes))")
         case .downloading(nil):
-            if job.waitingForNetwork { return String(localized: "Waiting for the network…") }
             if let retry = job.automaticRetry {
                 return String(localized: "Trying again (\(retry) of \(job.retryDelays.count))…")
             }
@@ -105,10 +110,18 @@ public enum DownloadFormatting {
         case .completed(let file):
             var parts = [file.pathExtension.uppercased()]
             if let size = job.savedFileSize { parts.append(bytes(size)) }
-            if job.savedFiles.count > 1 { parts.insert(String(localized: "\(job.savedFiles.count) files"), at: 0) }
-            if job.failedItems > 0 { parts.append(String(localized: "\(job.failedItems) failed")) }
-            if job.subtitlesMissing { parts.append(String(localized: "Subtitles unavailable")) }
-            if job.subtitlesSavedSeparately { parts.append(String(localized: "Subtitles in a separate file")) }
+            if job.failedItems > 0 {
+                let total = job.playlistTotal ?? job.savedFiles.count + job.failedItems
+                parts.insert(String(localized: "\(job.savedFiles.count) of \(total) saved"), at: 0)
+            } else if job.savedFiles.count > 1 {
+                parts.insert(String(localized: "\(job.savedFiles.count) files"), at: 0)
+            }
+            switch job.subtitleStatus {
+            case .missing: parts.append(String(localized: "Subtitles unavailable"))
+            case .retrying: parts.append(String(localized: "Getting subtitles…"))
+            case .separate: parts.append(String(localized: "Subtitles in a separate file"))
+            case nil: break
+            }
             return parts.joined(separator: " · ")
         case .failed(let message):
             return message

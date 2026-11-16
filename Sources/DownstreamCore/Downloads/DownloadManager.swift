@@ -45,6 +45,13 @@ public final class DownloadManager {
     public var onJobFinished: ((DownloadJob) -> Void)?
     /// Called after anything that changes which downloads are unfinished, so they can be saved.
     public var onQueueChanged: (() -> Void)?
+    /// Called when the later tries for a finished job's refused subtitles are over.
+    public var onSubtitlesRecovered: ((DownloadJob) -> Void)?
+
+    /// How temporary failures are tried again. Applies to every download, including ones already listed.
+    public var retryPolicy = RetryPolicy.default {
+        didSet { for job in jobs { job.retryDelays = retryPolicy.delays } }
+    }
 
     /// While true, queued downloads wait (e.g. while yt-dlp itself is being updated). Running ones carry on.
     public var isHeld = false {
@@ -52,10 +59,13 @@ public final class DownloadManager {
     }
 
     /// Whether the Mac has a network connection (the app watches it). Offline, a failing download waits
-    /// for the connection instead of failing, and the Mac isn't kept awake for it.
+    /// for the connection instead of failing; it starts again as soon as this turns true.
     public var isOnline = true {
-        didSet { keepAwakeWhileRunning() }
+        didSet { if isOnline { schedule() } }
     }
+
+    /// Wakes `schedule()` when the next waiting download is due.
+    private var wake: Task<Void, Never>?
 
     /// Held while downloads run, so the Mac doesn't fall asleep in the middle of one.
     private var awake: NSObjectProtocol?
@@ -95,11 +105,16 @@ public final class DownloadManager {
         let context = DownloadContext(url: url, outputDirectory: outputDirectory, ffmpeg: tools.ffmpeg, aria2c: tools.aria2c)
         let job = DownloadJob(url: url, options: options, context: context, ytDlp: tools.ytDlp,
                               title: title, thumbnailURL: thumbnailURL)
-        job.isOnline = { [weak self] in self?.isOnline ?? true }
+        adopt(job)
         jobs.insert(job, at: 0)
         schedule()
         onQueueChanged?()
         return job
+    }
+
+    private func adopt(_ job: DownloadJob) {
+        job.isOnline = { [weak self] in self?.isOnline ?? true }
+        job.retryDelays = retryPolicy.delays
     }
 
     public func pause(_ job: DownloadJob) {
@@ -130,11 +145,13 @@ public final class DownloadManager {
     public func remove(_ job: DownloadJob) {
         guard !started.contains(job.id) else { return }
         if !job.isFinished { job.cancel() }
+        job.abandonSubtitles()
         jobs.removeAll { $0.id == job.id }
         onQueueChanged?()
     }
 
     public func removeFinished() {
+        for job in jobs where job.isFinished { job.abandonSubtitles() }
         jobs.removeAll { $0.isFinished }
         onQueueChanged?()   // failed downloads are saved too
     }
@@ -145,7 +162,7 @@ public final class DownloadManager {
     /// Adds downloads saved at the last quit (paused, or failed as they were) below anything already in the list.
     public func restore(_ pending: [PendingDownload], tools: DownloadTools) {
         let restored = pending.reversed().map { DownloadJob(restoring: $0, tools: tools) }
-        for job in restored { job.isOnline = { [weak self] in self?.isOnline ?? true } }
+        restored.forEach(adopt)
         jobs.append(contentsOf: restored)
     }
 
@@ -191,13 +208,18 @@ public final class DownloadManager {
         onQueueChanged?()
     }
 
+    /// Call when the Mac wakes from sleep: running downloads start again from what they have.
+    public func restartAfterWake() {
+        for job in jobs { job.restartAfterWake() }
+    }
+
     public func cancelAll() {
         for job in jobs { job.cancel() }
         onQueueChanged?()
     }
 
     private func keepAwakeWhileRunning() {
-        if started.isEmpty || !isOnline {
+        if started.isEmpty {
             if let awake { ProcessInfo.processInfo.endActivity(awake) }
             awake = nil
         } else if awake == nil {
@@ -205,26 +227,39 @@ public final class DownloadManager {
         }
     }
 
-    /// Starts the oldest queued jobs until `maxConcurrent` are running.
+    /// Starts the oldest queued jobs that are ready until `maxConcurrent` are running. A job waiting for its
+    /// next automatic retry or for the network is queued but not ready: it holds no slot, and `wake` comes
+    /// back for it when it's due.
     private func schedule() {
         guard !isHeld else { return }
         // `jobs` is newest first, so walk it backwards.
         for job in jobs.reversed() where started.count < maxConcurrent {
-            guard job.state == .queued, !started.contains(job.id) else { continue }
+            guard job.isReadyToRun, !started.contains(job.id) else { continue }
             started.insert(job.id)
             keepAwakeWhileRunning()
             let starter = starter
             Task {
-                try? FileManager.default.createDirectory(at: job.context.outputDirectory, withIntermediateDirectories: true)
                 await job.run(starter: starter)
                 started.remove(job.id)
                 keepAwakeWhileRunning()
                 switch job.state {
-                case .completed, .failed: onJobFinished?(job)
+                case .completed, .failed:
+                    onJobFinished?(job)
+                    job.markRecorded()
+                    job.recoverSubtitles(starter: starter) { self.onSubtitlesRecovered?(job) }
                 default: break
                 }
                 schedule()
                 onQueueChanged?()
+            }
+        }
+
+        wake?.cancel()
+        wake = nil
+        if let next = jobs.compactMap(\.waitsUntil).min() {
+            wake = Task { [weak self] in
+                try? await Task.sleep(until: next, clock: .continuous)
+                if !Task.isCancelled { self?.schedule() }
             }
         }
     }

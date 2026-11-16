@@ -63,6 +63,8 @@ public struct PendingDownload: Codable, Sendable, Equatable {
     /// (Older files don't have these fields.)
     public var failure: String? = nil
     public var log: [String]? = nil
+    /// Why Downstream paused it, when it did.
+    public var pauseReason: PauseReason? = nil
 
     public struct SavedProgress: Codable, Sendable, Equatable {
         public var downloadedBytes: Int64
@@ -113,16 +115,38 @@ public final class Library {
             return
         }
         guard case .completed(let file) = job.state else { return }
-        // A playlist saves several files; each becomes its own entry.
-        let files = job.savedFiles.isEmpty ? [file] : job.savedFiles
-        let entries = files.reversed().map { saved in
-            HistoryEntry(url: job.url, title: files.count > 1 ? saved.deletingPathExtension().lastPathComponent : job.title,
-                         thumbnailURL: files.count > 1 ? nil : job.thumbnailURL, file: saved,
+        // A playlist saves several files; each becomes its own entry. Files recorded by an earlier run of the
+        // same job (before its missing items were retried) aren't listed again.
+        let isPlaylist = job.savedFiles.count > 1
+        let entries = job.unrecordedFiles.reversed().map { saved in
+            HistoryEntry(url: job.url, title: isPlaylist ? saved.deletingPathExtension().lastPathComponent : job.title,
+                         thumbnailURL: isPlaylist ? nil : job.thumbnailURL, file: saved,
                          fileSize: saved == file ? job.savedFileSize : nil, options: job.options,
-                         subtitlesMissing: job.subtitlesMissing ? true : nil)
+                         subtitlesMissing: job.owesSubtitles(for: saved) ? true : nil)
         }
         history.insert(contentsOf: entries, at: 0)
+        if job.failedItems > 0 {
+            // The items that didn't make it, so the playlist shows under Failed and can be tried again.
+            let total = job.playlistTotal ?? job.savedFiles.count + job.failedItems
+            history.insert(HistoryEntry(url: job.url, title: job.title, thumbnailURL: job.thumbnailURL, file: nil, fileSize: nil,
+                                        options: job.options,
+                                        failure: String(localized: "\(total - job.savedFiles.count) of \(total) items couldn't be downloaded.")), at: 0)
+        }
         trimAndSaveHistory()
+    }
+
+    /// Updates the "no subtitles" note of a job's files after its later tries for them.
+    public func updateSubtitles(for job: DownloadJob) {
+        var changed = false
+        for index in history.indices {
+            guard let file = history[index].file, job.savedFiles.contains(file) else { continue }
+            let missing: Bool? = job.owesSubtitles(for: file) ? true : nil
+            if history[index].subtitlesMissing != missing {
+                history[index].subtitlesMissing = missing
+                changed = true
+            }
+        }
+        if changed { save(history, to: historyStore) }
     }
 
     private func trimAndSaveHistory() {

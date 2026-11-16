@@ -258,10 +258,29 @@ private final class LineTail: Sendable {
 
 /// yt-dlp processes a crashed Downstream left behind. They'd keep writing the files a restored download resumes.
 public enum OrphanedDownloads {
-    /// Asks them to stop (SIGINT, as for a pause). Only processes whose parent is gone (adopted by launchd)
-    /// and whose arguments carry `marker` — by default the progress template only Downstream passes.
-    public static func stop(marker: String = "download:" + ArgumentBuilder.downloadProgressPrefix) async {
-        _ = try? await ProcessRunner.output(of: URL(fileURLWithPath: "/usr/bin/pkill"),
-                                            arguments: ["-INT", "-P", "1", "-f", marker], timeout: .seconds(5))
+    /// Stops them and returns once they're gone: SIGINT first (as for a pause), SIGKILL for any still there
+    /// after `gracePeriod`. Only processes whose parent is gone (adopted by launchd) and whose arguments carry
+    /// `marker` — by default the progress template only Downstream passes.
+    public static func stop(marker: String = "download:" + ArgumentBuilder.downloadProgressPrefix,
+                            gracePeriod: Duration = .seconds(5)) async {
+        func run(_ tool: String, _ arguments: [String]) async -> Bool {
+            (try? await ProcessRunner.output(of: URL(fileURLWithPath: "/usr/bin/" + tool), arguments: arguments,
+                                             timeout: .seconds(5))) != nil
+        }
+        // pgrep and pkill exit non-zero when nothing matches.
+        func alive() async -> Bool { await run("pgrep", ["-P", "1", "-f", marker]) }
+        func gone(within limit: Duration) async -> Bool {
+            let end = ContinuousClock.now + limit
+            while await alive() {
+                if ContinuousClock.now >= end { return false }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            return true
+        }
+
+        guard await run("pkill", ["-INT", "-P", "1", "-f", marker]) else { return }
+        if await gone(within: gracePeriod) { return }
+        _ = await run("pkill", ["-KILL", "-P", "1", "-f", marker])
+        _ = await gone(within: .seconds(2))
     }
 }

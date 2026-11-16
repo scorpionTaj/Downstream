@@ -1,8 +1,11 @@
 import Foundation
 @testable import DownstreamCore
 
-/// A network connection the checks can switch on.
-@MainActor private final class Network { var online = false }
+/// Something a callback switches on.
+@MainActor private final class Flag { var on = false }
+
+/// The arguments a stand-in yt-dlp was started with.
+private final class Seen: @unchecked Sendable { var arguments: [String] = [] }
 
 /// Drives `DownloadJob` and `DownloadManager` with shell scripts standing in for yt-dlp.
 @MainActor
@@ -28,6 +31,14 @@ func downloadJobChecks() async {
 
     func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    /// Runs a job the way the manager does, minus the slots: again each time it's due, until it's no longer queued.
+    func drive(_ job: DownloadJob, _ starter: @escaping ProcessStarter) async throws {
+        while job.state == .queued {
+            try await waitUntil { job.isReadyToRun }
+            await job.run(starter: starter)
+        }
     }
 
     func progressLine(_ file: String, _ done: Int = 10) -> String {
@@ -60,81 +71,329 @@ func downloadJobChecks() async {
     }
 
     await suite("DownloadJob: refused subtitles don't fail the download, and are mentioned") {
-        let refused = "echo \"WARNING: Unable to download video subtitles for 'ar': HTTP Error 429: Too Many Requests\" >&2; echo '@@F /tmp/ok.mp4'"
-        let job = makeJob()
-        job.subtitleRetryDelay = .zero
-        await job.run(starter: script(refused))   // the second try is refused too
-        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
-        expectEqual(DownloadFormatting.status(of: job), "MP4 · Subtitles unavailable")
-
-        // The second try (recognisable by --skip-download) gets them: saved next to the video.
         let folder = makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let subtitles = folder.appendingPathComponent("ok.ar.vtt").path
-        let lucky = makeJob(folder: folder)
-        lucky.subtitleRetryDelay = .zero
-        await lucky.run(starter: { _, arguments in
-            let second = "touch '\(subtitles)'; echo '[info] Writing video subtitles to: \(subtitles)'"
-            return try ProcessRunner.start(sh, arguments: ["-c", arguments.contains("--skip-download") ? second : refused])
-        })
-        expectEqual(lucky.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
-        expectEqual(DownloadFormatting.status(of: lucky), "MP4 · Subtitles in a separate file")
+        // Real one-second videos, so ffmpeg has something to put the subtitles into.
+        func makeClip(_ name: String) async throws -> URL {
+            let clip = folder.appendingPathComponent(name)
+            _ = try await ProcessRunner.output(of: ffmpeg, arguments: [
+                "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10", "-t", "1", "-pix_fmt", "yuv420p", clip.path])
+            return clip
+        }
+        @Sendable func refused(_ file: String) -> String {
+            "echo \"WARNING: Unable to download video subtitles for 'ar': HTTP Error 429: Too Many Requests\" >&2; sleep 0.3; echo '@@U https://example.com/item'; echo '@@F \(file)'"
+        }
+        /// yt-dlp for the download, then for each later subtitle try: `later` gets the folder it must write into.
+        func starter(_ file: String, later: @escaping @Sendable (String) -> String) -> ProcessStarter {
+            { _, arguments in
+                guard arguments.contains("--skip-download") else { return try ProcessRunner.start(sh, arguments: ["-c", refused(file)]) }
+                let scratch = arguments[arguments.firstIndex(of: "--paths")! + 1]
+                expect(arguments.contains("ar") && arguments.last == "https://example.com/item", "asks for the refused language of that video")
+                return try ProcessRunner.start(sh, arguments: ["-c", later(scratch)])
+            }
+        }
+        let gotThem: @Sendable (String) -> String = { "printf 'WEBVTT\\n\\n00:00.000 --> 00:01.000\\nhello\\n' > '\($0)/subtitles.ar.vtt'" }
+        @MainActor func recover(_ job: DownloadJob, _ starter: @escaping ProcessStarter) async throws {
+            let done = Flag()
+            job.recoverSubtitles(starter: starter) { done.on = true }
+            expectEqual(DownloadFormatting.status(of: job).hasSuffix("Getting subtitles…"), true)
+            try await waitUntil { done.on }
+        }
+
+        for name in ["clip.mp4", "clip.mkv"] {
+            let clip = try await makeClip(name)
+            let run = starter(clip.path, later: gotThem)
+            let job = makeJob(folder: folder)
+            job.subtitleRetryDelays = [.zero]
+            await job.run(starter: run)
+            expectEqual(job.state, .completed(clip))   // complete straight away, without them
+            expectEqual(job.subtitleStatus, .missing)
+            expect(DownloadFormatting.status(of: job).hasSuffix("Subtitles unavailable"), "says so")
+            expect(job.owesSubtitles(for: clip), "history is told too")
+
+            try await recover(job, run)
+            expectEqual(job.subtitleStatus, nil)   // inside the video now
+            expect(!job.owesSubtitles(for: clip), "nothing owed any more")
+            let embedded = try await ProcessRunner.output(of: ffmpeg, arguments: ["-v", "error", "-i", clip.path, "-map", "0:s:0", "-f", "srt", "-"])
+            expect(embedded.contains("hello"), "\(name) has the subtitle stream, got \(embedded)")
+            expectEqual((try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.filter { $0.contains("temp") }, [])
+        }
+
+        // A file ffmpeg can't add them to: they go next to it.
+        let odd = folder.appendingPathComponent("odd.mp4")
+        FileManager.default.createFile(atPath: odd.path, contents: Data("not a video".utf8))
+        let beside = makeJob(folder: folder)
+        beside.subtitleRetryDelays = [.zero]
+        await beside.run(starter: starter(odd.path, later: gotThem))
+        try await recover(beside, starter(odd.path, later: gotThem))
+        expectEqual(beside.subtitleStatus, .separate)
+        expectEqual(DownloadFormatting.status(of: beside), "MP4 · 11 bytes · Subtitles in a separate file")
+        expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("odd.ar.vtt").path), "odd.ar.vtt next to the video")
+        expectEqual(try Data(contentsOf: odd), Data("not a video".utf8))   // untouched
+
+        // Refused every time: still missing after the last try.
+        let unlucky = makeJob(folder: folder)
+        unlucky.subtitleRetryDelays = [.zero, .zero]
+        let never = starter(odd.path) { _ in "echo 'ERROR: Unable to download video subtitles' >&2; exit 1" }
+        await unlucky.run(starter: never)
+        try await recover(unlucky, never)
+        expectEqual(unlucky.subtitleStatus, .missing)
+        expectEqual(unlucky.log.filter { $0.hasPrefix("ERROR: Unable to download video subtitles") }.count, 2)
     }
 
-    await suite("DownloadJob: offline, a failure waits for the network instead of failing") {
+    await suite("SubtitleEmbedder: ffmpeg arguments") {
+        let video = URL(fileURLWithPath: "/tmp/v.mp4")
+        let tracks = [SubtitleEmbedder.Track(file: URL(fileURLWithPath: "/tmp/s.ar.vtt"), language: "ar"),
+                      SubtitleEmbedder.Track(file: URL(fileURLWithPath: "/tmp/s.pt-BR.vtt"), language: "pt-BR")]
+        let args = SubtitleEmbedder.arguments(video: video, tracks: tracks, output: URL(fileURLWithPath: "/tmp/o.mp4"))!
+        expectEqual(args.joined(separator: " "),
+                    "-y -loglevel error -i /tmp/v.mp4 -i /tmp/s.ar.vtt -i /tmp/s.pt-BR.vtt -map 0:v? -map 0:a? -map 1:0 -map 2:0 "
+                    + "-map 0:s? -map 0:t? -c copy -c:s mov_text -metadata:s:s:0 language=ara -metadata:s:s:1 language=por /tmp/o.mp4")
+        expectEqual(SubtitleEmbedder.codec(forContainer: "webm"), "webvtt")
+        expectEqual(SubtitleEmbedder.codec(forContainer: "mkv"), "copy")
+        expect(SubtitleEmbedder.arguments(video: URL(fileURLWithPath: "/tmp/v.mp3"), tracks: tracks, output: video) == nil, "no subtitles in an MP3")
+    }
+
+    await suite("RetryPolicy: waits grow five-fold up to ten minutes") {
+        expectEqual(RetryPolicy(count: 5, firstWaitSeconds: 5).delays, [.seconds(5), .seconds(25), .seconds(125), .seconds(600), .seconds(600)])
+        expectEqual(RetryPolicy(count: 2, firstWaitSeconds: 60).delays, [.seconds(60), .seconds(300)])
+        expectEqual(RetryPolicy(count: 0, firstWaitSeconds: 5).delays, [])
+        expectEqual(RetryPolicy(count: 99, firstWaitSeconds: 5).count, 10)
+        expectEqual(RetryPolicy.default.delays.count, 3)
+    }
+
+    await suite("DownloadJob: a temporary failure is retried by itself") {
+        expect(DownloadJob.isTemporary("Unable to download webpage: HTTP Error 429: Too Many Requests"), "429 is temporary")
+        expect(DownloadJob.isTemporary("<urlopen error [Errno 8] nodename nor servname provided, or not known>"), "no network is temporary")
+        expect(!DownloadJob.isTemporary("[youtube] abc: Video unavailable"), "an unavailable video isn't")
+        expect(!DownloadJob.isTemporary("[youtube] abc: Sign in to confirm you're not a bot"), "a sign-in wall isn't")
+
+        // Fails with a 503 until its marker file exists, so the second run succeeds.
         let marker = makeFolder().appendingPathComponent("tried").path
+        let flaky = script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo 'ERROR: HTTP Error 503: Service Unavailable' >&2; exit 1; fi")
         let job = makeJob()
-        let network = Network()
-        job.isOnline = { network.online }
-        job.offlineRetryInterval = .seconds(30)
-        job.retryDelays = []   // not a retry: waiting doesn't use any up
-        let run = Task { @MainActor in
-            await job.run(starter: script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo 'ERROR: something odd' >&2; exit 1; fi"))
-        }
-        try await waitUntil { job.waitingForNetwork }
-        expectEqual(DownloadFormatting.status(of: job), "Waiting for the network…")
-        network.online = true
-        await run.value
+        job.retryDelays = [.milliseconds(300)]
+        await job.run(starter: flaky)
+        expectEqual(job.state, .queued)   // waiting, without yt-dlp and without a slot
+        expect(!job.isReadyToRun && !job.isRunning, "not ready until the wait is over")
+        expectEqual(DownloadFormatting.status(of: job), "Trying again (1 of 1)…")
+        try await drive(job, flaky)
         expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
+        expect(job.log.contains { $0.contains("trying again (1 of 1)") }, "the retry is in the log")
+        expectEqual(job.automaticRetry, nil)
+
+        let failing = script("echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1")
+        let hopeless = makeJob()
+        hopeless.retryDelays = [.milliseconds(10), .milliseconds(10)]
+        try await drive(hopeless, failing)
+        expectEqual(hopeless.state, .failed("The site is refusing requests for now. Try again later."))
+        expectEqual(hopeless.log.filter { $0.contains("trying again") }.count, 2)
+        hopeless.retry()   // the user's own retry gets the automatic ones afresh
+        try await drive(hopeless, failing)
+        expectEqual(hopeless.log.filter { $0.contains("trying again") }.count, 2)
+
+        let permanent = makeJob()
+        permanent.retryDelays = [.seconds(30)]
+        await permanent.run(starter: script("echo 'ERROR: Video unavailable' >&2; exit 1"))
+        expectEqual(permanent.state, .failed("This video is unavailable or private."))   // straight away: no 30 s wait
+    }
+
+    await suite("DownloadJob: pausing or cancelling while waiting to retry") {
+        let failing = script("echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1")
+        for (stop, expected) in [(false, DownloadJob.State.paused), (true, .cancelled)] {
+            let job = makeJob()
+            job.retryDelays = [.seconds(30)]
+            await job.run(starter: failing)
+            expectEqual(job.automaticRetry, 1)
+            if stop { job.cancel() } else { job.pause() }
+            expectEqual(job.state, expected)
+            expectEqual(job.automaticRetry, nil)
+        }
+        let resumed = makeJob()
+        resumed.retryDelays = [.seconds(30)]
+        await resumed.run(starter: failing)
+        resumed.pause()
+        resumed.resume()
+        expect(resumed.isReadyToRun, "resuming doesn't wait out the rest of the delay")
+    }
+
+    await suite("DownloadManager: a download waiting to retry doesn't hold a slot") {
+        let manager = DownloadManager(maxConcurrent: 1, starter: { _, arguments in
+            let bad = arguments.last!.hasSuffix("/bad")
+            return try ProcessRunner.start(sh, arguments: ["-c", bad ? "echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1" : "sleep 0.2; echo '@@F /tmp/good.mp4'"])
+        })
+        manager.retryPolicy = RetryPolicy(count: 1, firstWaitSeconds: 1)
+        var finished: [String] = []
+        manager.onJobFinished = { finished.append($0.title) }
+        let folder = FileManager.default.temporaryDirectory
+        let bad = manager.add(url: URL(string: "https://example.com/bad")!, options: DownloadOptions(), title: "bad",
+                              thumbnailURL: nil, outputDirectory: folder, tools: DownloadTools(ytDlp: sh, ffmpeg: ffmpeg))
+        let good = manager.add(url: URL(string: "https://example.com/good")!, options: DownloadOptions(), title: "good",
+                               thumbnailURL: nil, outputDirectory: folder, tools: DownloadTools(ytDlp: sh, ffmpeg: ffmpeg))
+        try await waitUntil { good.isFinished }
+        expectEqual(good.state, .completed(URL(fileURLWithPath: "/tmp/good.mp4")))   // ran while the first one waited
+        expectEqual(bad.state, .queued)
+        expectEqual(bad.automaticRetry, 1)
+        expectEqual(manager.runningCount, 0)
+        try await waitUntil { bad.isFinished }   // the manager comes back for it by itself when the wait is over
+        expectEqual(bad.state, .failed("The site is refusing requests for now. Try again later."))
+        expectEqual(finished, ["good", "bad"])   // waiting isn't finishing: no "failed" until it gives up
+    }
+
+    await suite("DownloadManager: offline, a failure waits for the network instead of failing") {
+        let marker = makeFolder().appendingPathComponent("tried").path
+        let manager = DownloadManager(maxConcurrent: 1, starter: script(
+            "if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo 'ERROR: something odd' >&2; exit 1; fi"))
+        manager.retryPolicy = RetryPolicy(count: 0, firstWaitSeconds: 5)   // not a retry: waiting doesn't use any up
+        manager.isOnline = false
+        let job = manager.add(url: URL(string: "https://example.com/v")!, options: DownloadOptions(), title: nil, thumbnailURL: nil,
+                              outputDirectory: FileManager.default.temporaryDirectory, tools: DownloadTools(ytDlp: sh, ffmpeg: ffmpeg))
+        try await waitUntil { job.waitingForNetwork }
+        expectEqual(job.state, .queued)
+        expectEqual(DownloadFormatting.status(of: job), "Waiting for the network…")
+        try await Task.sleep(for: .milliseconds(100))
+        expectEqual(manager.runningCount, 0)   // no slot held, Mac free to sleep
+        manager.isOnline = true
+        try await waitUntil { job.isFinished }
+        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
+
+        // Should the system be wrong about the network, a waiting download still tries now and then.
+        let stubborn = makeJob()
+        stubborn.isOnline = { false }
+        stubborn.offlineRetryInterval = .milliseconds(50)
+        let marker2 = makeFolder().appendingPathComponent("tried").path
+        try await drive(stubborn, script("if [ -e '\(marker2)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker2)'; echo 'ERROR: something odd' >&2; exit 1; fi"))
+        expectEqual(stubborn.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
     }
 
     await suite("DownloadJob: a download that goes silent is restarted") {
-        let marker = makeFolder().appendingPathComponent("tried").path
-        let job = makeJob()
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let marker = folder.appendingPathComponent("tried").path
+        let job = makeJob(folder: folder)
         job.stallLimit = .milliseconds(200)
         job.retryDelays = [.milliseconds(10)]
-        await job.run(starter: script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo '\(progressLine("/tmp/ok.mp4"))'; exec sleep 30; fi"))
+        try await drive(job, script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo '\(progressLine("/tmp/ok.mp4"))'; exec sleep 30; fi"))
         expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
         expect(job.log.contains { $0.contains("no progress") }, "the restart is in the log")
+
+        // aria2 and ffmpeg print nothing while they work; what they write is the sign of life.
+        let part = folder.appendingPathComponent("clip [a].mp4.part").path
+        let quiet = makeJob(folder: folder)
+        quiet.stallLimit = .milliseconds(300)
+        quiet.retryDelays = []
+        await quiet.run(starter: script("echo '@@D |clip [a].mp4'; for i in 1 2 3 4 5 6 7 8; do echo data >> '\(part)'; sleep 0.1; done; echo '@@F /tmp/ok.mp4'"))
+        expectEqual(quiet.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
+        expect(!quiet.log.contains { $0.contains("no progress") }, "silent but writing: left alone")
+
+        // …and when the file stops growing too, it has stalled.
+        let dead = makeJob(folder: folder)
+        dead.stallLimit = .milliseconds(200)
+        dead.retryDelays = []
+        await dead.run(starter: script("echo '@@D |clip [b].mp4'; echo data > '\(folder.path)/clip [b].mp4.part'; exec sleep 30"))
+        expectEqual(dead.state, .failed("The download stopped making progress."))
+
+        // Still starting up (nothing written yet) isn't a stall, however quiet.
+        let starting = makeJob(folder: folder)
+        starting.stallLimit = .milliseconds(100)
+        await starting.run(starter: script("sleep 0.6; echo '@@F /tmp/ok.mp4'"))
+        expectEqual(starting.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
     }
 
-    await suite("DownloadJob: missing folder pauses, full disk fails, before yt-dlp starts") {
+    await suite("DownloadJob: after the Mac wakes, a running download starts again") {
+        let marker = makeFolder().appendingPathComponent("tried").path
+        let starter = script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo '\(progressLine("/tmp/ok.mp4"))'; exec sleep 30; fi")
+        let job = makeJob()
+        job.retryDelays = []   // it isn't a failure: no retry is used
+        let run = Task { @MainActor in await job.run(starter: starter) }
+        try await waitUntil { if case .downloading(.some) = job.state { true } else { false } }
+        job.restartAfterWake()
+        await run.value
+        expectEqual(job.state, .queued)
+        expect(job.isReadyToRun, "ready at once")
+        expectEqual(job.automaticRetry, nil)
+        try await drive(job, starter)
+        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
+
+        let idle = makeJob()
+        idle.restartAfterWake()   // nothing running: nothing happens
+        expectEqual(idle.state, .queued)
+    }
+
+    await suite("DownloadJob: a missing folder or a full disk pauses the download, with the reason") {
+        let tools = DownloadTools(ytDlp: sh, ffmpeg: ffmpeg)
         let unplugged = makeJob(folder: URL(fileURLWithPath: "/dev/null/Videos"))
         await unplugged.run(starter: script("echo '@@F /tmp/ok.mp4'"))
         expectEqual(unplugged.state, .paused)
         expectEqual(DownloadFormatting.status(of: unplugged), "Paused · the download folder isn't available")
+        // The reason survives a relaunch.
+        let restored = DownloadJob(restoring: try JSONDecoder().decode(PendingDownload.self, from: JSONEncoder().encode(unplugged.pendingSnapshot)), tools: tools)
+        expectEqual(DownloadFormatting.status(of: restored), "Paused · the download folder isn't available")
         unplugged.resume()
         expectEqual(unplugged.state, .queued)
-        expect(!unplugged.folderUnavailable, "resuming tries again")
+        expectEqual(unplugged.pauseReason, nil)
 
         let full = makeJob()
         full.minimumFreeBytes = .max
         await full.run(starter: script("echo '@@F /tmp/ok.mp4'"))
-        if case .failed(let message) = full.state {
-            expect(message.hasPrefix("The disk is almost full"), "says the disk is almost full, got \(message)")
-        } else {
-            expect(false, "expected a failure, got \(full.state)")
-        }
+        expectEqual(full.state, .paused)
+        expectEqual(DownloadFormatting.status(of: full), "Paused · not enough disk space")
+
+        // The file turns out bigger than the room left: stopped as soon as its size is known.
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let part = folder.appendingPathComponent("big [x].mp4").path
+        let big = makeJob(folder: folder)
+        await big.run(starter: script(#"touch '\#(part).part'; echo '@@P {"status": "downloading", "downloaded_bytes": 10, "total_bytes": 9000000000000000000, "filename": "\#(part)"}'; exec sleep 30"#))
+        expectEqual(big.state, .paused)
+        expectEqual(big.pauseReason, .diskFull)
+        expect(FileManager.default.fileExists(atPath: part + ".part"), "what it has is kept for resuming")
+        expect(big.log.contains { $0.contains("not enough disk space") }, "and the log says why")
+
+        // The disk filled up anyway (yt-dlp's own error).
+        let filled = makeJob()
+        filled.retryDelays = [.milliseconds(10)]
+        await filled.run(starter: script("echo 'ERROR: unable to write data: [Errno 28] No space left on device' >&2; exit 1"))
+        expectEqual(filled.state, .paused)
+        expectEqual(filled.pauseReason, .diskFull)
     }
 
-    await suite("DownloadJob: a playlist that saved some items is complete, with the rest counted") {
+    await suite("DownloadJob: a playlist that saved some items is complete; retrying fetches the rest") {
+        let folder = makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = Library(directory: folder)
         var options = DownloadOptions()
         options.downloadPlaylist = true
         let job = makeJob(options)
-        await job.run(starter: script("echo '@@F /tmp/a.mp4'; echo 'ERROR: [youtube] b: Private video' >&2; echo '@@F /tmp/c.mp4'; exit 1"))
+        job.title = "Mix"
+        let seen = Seen()
+        await job.run(starter: { _, arguments in
+            seen.arguments = arguments
+            return try ProcessRunner.start(sh, arguments: ["-c", "echo '@@D 3|a.mp4'; echo '@@F /tmp/a.mp4'; echo 'ERROR: [youtube] b: Private video' >&2; echo '@@D 3|c.mp4'; echo '@@F /tmp/c.mp4'; exit 1"])
+        })
         expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/c.mp4")))
         expectEqual(job.failedItems, 1)
-        expectEqual(DownloadFormatting.status(of: job), "2 files · MP4 · 1 failed")
+        expectEqual(DownloadFormatting.status(of: job), "2 of 3 saved · MP4")
+        let archive = seen.arguments.firstIndex(of: "--download-archive").map { seen.arguments[$0 + 1] }
+        expect(archive != nil && seen.arguments.suffix(2).first == "--", "yt-dlp notes what it finished, got \(seen.arguments.suffix(4))")
+
+        library.record(job)
+        job.markRecorded()
+        expectEqual(library.history.map(\.title), ["Mix", "c", "a"])
+        expectEqual(library.history[0].failure, "1 of 3 items couldn't be downloaded.")
+
+        expect(job.canRetry, "the missing item can be retried")
+        job.retry()
+        expectEqual(job.savedFiles.count, 2)   // what it saved stays
+        await job.run(starter: { _, arguments in
+            expectEqual(arguments.firstIndex(of: "--download-archive").map { arguments[$0 + 1] }, archive)   // the same notes: only the rest is fetched
+            return try ProcessRunner.start(sh, arguments: ["-c", "echo '@@D 3|b.mp4'; echo '@@F /tmp/b.mp4'"])
+        })
+        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/b.mp4")))
+        expectEqual(DownloadFormatting.status(of: job), "3 files · MP4")
+        expect(!job.canRetry, "nothing left to retry")
+        library.record(job)
+        expectEqual(library.history.map(\.title), ["b", "Mix", "c", "a"])   // only the new file is added
     }
 
     await suite("DownloadJob: a failed download is saved and comes back failed, with its log") {
@@ -149,7 +408,7 @@ func downloadJobChecks() async {
         expectEqual(restored.state, job.state)
         expectEqual(restored.log, job.log)
         expect(restored.canRetry, "and can be retried")
-        // A file saved before failures were kept has neither field: it restores paused.
+        // A file saved before failures were kept has none of the newer fields: it restores paused.
         var fields = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         fields["failure"] = nil
         fields["log"] = nil
@@ -165,63 +424,33 @@ func downloadJobChecks() async {
         expectEqual(DownloadFormatting.failure("something nobody has seen before"), "something nobody has seen before")
     }
 
-    await suite("OrphanedDownloads: stops only processes whose parent is gone") {
-        let marker = "downstream-orphan-\(UUID().uuidString)"
+    await suite("OrphanedDownloads: stops only processes whose parent is gone, and waits for them") {
         let pgrep = URL(fileURLWithPath: "/usr/bin/pgrep")
-        func alive() async -> Int {
+        let perl = URL(fileURLWithPath: "/usr/bin/perl")
+        func alive(_ marker: String) async -> Int {
             ((try? await ProcessRunner.output(of: pgrep, arguments: ["-f", marker])) ?? "").split(separator: "\n").count
         }
-        // perl resets SIGINT, which sh ignores for background commands; the outer sh exits, orphaning it.
-        _ = try await ProcessRunner.output(of: sh, arguments: ["-c", "/usr/bin/perl -e '$SIG{INT}=q(DEFAULT); sleep 30' \(marker) >/dev/null 2>&1 &"])
-        let child = try ProcessRunner.start(URL(fileURLWithPath: "/usr/bin/perl"), arguments: ["-e", "sleep 30", marker])
-        try await Task.sleep(for: .milliseconds(200))
-        expectEqual(await alive(), 2)
-        await OrphanedDownloads.stop(marker: marker)
-        for _ in 0..<100 where await alive() > 1 { try await Task.sleep(for: .milliseconds(20)) }
-        expectEqual(await alive(), 1)   // our own child is left alone
-        child.cancel()
-    }
-
-    await suite("DownloadJob: a temporary failure is retried by itself") {
-        expect(DownloadJob.isTemporary("Unable to download webpage: HTTP Error 429: Too Many Requests"), "429 is temporary")
-        expect(DownloadJob.isTemporary("<urlopen error [Errno 8] nodename nor servname provided, or not known>"), "no network is temporary")
-        expect(!DownloadJob.isTemporary("[youtube] abc: Video unavailable"), "an unavailable video isn't")
-        expect(!DownloadJob.isTemporary("[youtube] abc: Sign in to confirm you're not a bot"), "a sign-in wall isn't")
-
-        // Fails with a 503 until its marker file exists, so the second run succeeds.
-        let marker = makeFolder().appendingPathComponent("tried").path
-        let flaky = script("if [ -e '\(marker)' ]; then echo '@@F /tmp/ok.mp4'; else touch '\(marker)'; echo 'ERROR: HTTP Error 503: Service Unavailable' >&2; exit 1; fi")
-        let job = makeJob()
-        job.retryDelays = [.milliseconds(10)]
-        await job.run(starter: flaky)
-        expectEqual(job.state, .completed(URL(fileURLWithPath: "/tmp/ok.mp4")))
-        expect(job.log.contains { $0.contains("trying again (1 of 1)") }, "the retry is in the log")
-        expectEqual(job.automaticRetry, nil)
-
-        let hopeless = makeJob()
-        hopeless.retryDelays = [.milliseconds(10), .milliseconds(10)]
-        await hopeless.run(starter: script("echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1"))
-        expectEqual(hopeless.state, .failed("The site is refusing requests for now. Try again later."))
-        expectEqual(hopeless.log.filter { $0.contains("trying again") }.count, 2)
-
-        let permanent = makeJob()
-        permanent.retryDelays = [.seconds(30)]
-        await permanent.run(starter: script("echo 'ERROR: Video unavailable' >&2; exit 1"))
-        expectEqual(permanent.state, .failed("This video is unavailable or private."))   // straight away: no 30 s wait
-    }
-
-    await suite("DownloadJob: pausing or cancelling while waiting to retry") {
-        let failing = script("echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1")
-        for (stop, expected) in [(false, DownloadJob.State.paused), (true, .cancelled)] {
-            let job = makeJob()
-            job.retryDelays = [.seconds(30)]
-            let run = Task { @MainActor in await job.run(starter: failing) }
-            try await waitUntil { job.automaticRetry == 1 }
-            expectEqual(DownloadFormatting.status(of: job), "Trying again (1 of 1)…")
-            if stop { job.cancel() } else { job.pause() }
-            await run.value
-            expectEqual(job.state, expected)
+        /// Starts a process that outlives its parent (the sh), handling SIGINT as `interrupt` says.
+        func orphan(_ marker: String, interrupt: String) async throws {
+            _ = try await ProcessRunner.output(of: sh, arguments: ["-c", "/usr/bin/perl -e '$SIG{INT}=q(\(interrupt)); sleep 30' \(marker) >/dev/null 2>&1 &"])
         }
+
+        let marker = "downstream-orphan-\(UUID().uuidString)"
+        try await orphan(marker, interrupt: "DEFAULT")
+        let child = try ProcessRunner.start(perl, arguments: ["-e", "sleep 30", marker])
+        try await Task.sleep(for: .milliseconds(200))
+        expectEqual(await alive(marker), 2)
+        await OrphanedDownloads.stop(marker: marker)
+        expectEqual(await alive(marker), 1)   // gone by the time it returns; our own child is left alone
+        child.cancel()
+
+        // One that ignores the polite request is killed.
+        let stubborn = "downstream-orphan-\(UUID().uuidString)"
+        try await orphan(stubborn, interrupt: "IGNORE")
+        try await Task.sleep(for: .milliseconds(200))
+        expectEqual(await alive(stubborn), 1)
+        await OrphanedDownloads.stop(marker: stubborn, gracePeriod: .milliseconds(300))
+        expectEqual(await alive(stubborn), 0)
     }
 
     await suite("DownloadJob: success without a file is a failure") {
