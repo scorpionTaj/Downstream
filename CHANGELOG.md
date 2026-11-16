@@ -2,6 +2,11 @@
 
 All notable changes to Downstream. The newest version is first. Downstream shows this list in Settings › About and after an update.
 
+## [1.3.3] - 2026-11-16
+
+### Fixed
+- Settings in the menu bar popover opens the Settings window in front, even when Downstream's window is closed or another app is in front. It could open behind other windows, or not show at all.
+
 ## [1.3.2] - 2026-11-16
 
 ### Added

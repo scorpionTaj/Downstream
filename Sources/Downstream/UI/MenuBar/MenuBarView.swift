@@ -12,6 +12,7 @@ struct MenuBarView: View {
     @Environment(Library.self) private var library
     @Environment(AppUpdateModel.self) private var updates
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     /// At most this many rows; the window shows the rest.
     private let rowLimit = 4
@@ -158,7 +159,7 @@ struct MenuBarView: View {
                 try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(folder)
             }
-            SettingsLink { Label("Settings", systemImage: "gearshape") }
+            Button("Settings", systemImage: "gearshape") { showSettings() }
             Spacer()
             Button("Quit", systemImage: "power") { AppDelegate.shared?.quitNow() }
         }
@@ -170,6 +171,18 @@ struct MenuBarView: View {
     }
 
     /// Brings the main window forward, or opens it if it was closed.
+    /// Not a `SettingsLink`: from the menu bar it doesn't bring Downstream forward, so with another app in
+    /// front the Settings window opened behind everything, or not at all.
+    private func showSettings() {
+        AppDelegate.shared?.restoreDockIconIfNeeded()
+        NSApp.activate()
+        openSettings()
+        // Once SwiftUI has made the window, put it in front.
+        DispatchQueue.main.async {
+            NSApp.windows.first { $0.identifier?.rawValue.contains("Settings") == true }?.makeKeyAndOrderFront(nil)
+        }
+    }
+
     private func showMainWindow() {
         AppDelegate.shared?.restoreDockIconIfNeeded()
         NSApp.activate()
